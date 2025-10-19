@@ -1,14 +1,15 @@
 import getpass
 import os
 import env
+from langchain_deepseek import ChatDeepSeek
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import START, MessagesState, StateGraph
 
 if not os.getenv("DEEPSEEK_API_KEY"):
     os.environ["DEEPSEEK_API_KEY"] = env.deepseek_api_key
 
 os.environ["LANGSMITH_TRACING"] = "true"
 os.environ["LANGSMITH_API_KEY"] = env.langchain_api_key
-
-from langchain_deepseek import ChatDeepSeek
 
 llm = ChatDeepSeek(
     model="deepseek-chat",
