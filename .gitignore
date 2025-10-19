@@ -1,2 +1,6 @@
 test.py
 .idea
+env.py
+chat.db
+conversations
+chat.db

@@ -4,10 +4,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from model import *
+from save_conversations import *
+from db import save_conversation_sql, init_db
 import uuid
 
 app = FastAPI(title="RAG Q&A Backend (dev)")
-
 
 # # 请求模型：用户发送的问题
 # class AskRequest(BaseModel):
@@ -51,21 +52,21 @@ def read_root():
 #     return AskResponse(session_id=session, answer=answer)
 
 @app.get("/askLLM")
-def ask_llm(model_name: str = "deepseek-chat", question: str = "Hi"):
-    try:
-        answer_text, raw_resp = model_choose(model_name, question)
-    except Exception as e:
-        # 返回 500 并把错误信息给前端（生产可更弱化错误信息）
-        raise HTTPException(status_code=500, detail=f"LLM 调用失败: {e}")
+def ask_llm(model_name: str = "deepseek-chat", question: str = "Hi", session_id: str = None):
+    # 如果没有 session_id，说明是新会话
+    is_new_session = not session_id
+    if is_new_session:
+        session_id = str(uuid.uuid4())
 
-    # 2. 返回给前端的 JSON（raw 有时很大或不可序列化，可按需包含）
-    payload = {
-        "model": model_name,
-        "question": question,
-        "answer": answer_text,
-    }
-    if raw_resp is not None:
-        payload["raw"] = raw_resp  # 若不需要把 raw 传回前端可移除此行
+    # 获取模型回答
+    answer_text, raw_resp = model_choose(model_name, question)
 
-    return JSONResponse(status_code=200, content=payload["answer"])
+    # 保存对话历史到数据库 (使用新添加的SQLAlchemy方法)
+    save_conversation_json(session_id, question, answer_text, model_name)
+    save_conversation_sql(session_id, question, answer_text, model_name)
 
+    # 返回结果包含 session_id
+    return JSONResponse(status_code=200, content={
+        "session_id": session_id,
+        "answer": answer_text
+    })
