@@ -15,6 +15,7 @@ SessionLocal = sessionmaker(bind=engine)
 # 4. 创建基类
 Base = declarative_base()
 
+
 # 5. 定义 Message 表
 class Message(Base):
     __tablename__ = "messages"

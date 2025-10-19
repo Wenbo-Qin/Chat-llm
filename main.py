@@ -52,7 +52,7 @@ def read_root():
 #     return AskResponse(session_id=session, answer=answer)
 
 @app.get("/askLLM")
-def ask_llm(model_name: str = "deepseek-chat", question: str = "Hi", session_id: str = None):
+def ask_llm(model_name: str = "deepseek-reasoner", question: str = "Hi", session_id: str = None):
     # 如果没有 session_id，说明是新会话
     is_new_session = not session_id
     if is_new_session:

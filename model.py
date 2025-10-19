@@ -52,6 +52,8 @@ def deepseek_chat(model: str, user_content: str):
 def model_choose(model_name: str, user_content: str):
     if model_name == "deepseek-chat":
         return deepseek_chat("deepseek-chat", user_content)
+    elif model_name == "deepseek-reasoner":
+        return deepseek_chat("deepseek-reasoner", user_content)
     elif model_name == "openai":
         return openai_chat()
     else:
