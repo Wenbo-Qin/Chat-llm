@@ -1,11 +1,13 @@
 # main.py
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from model import *
 from save_conversations import *
 from db import save_conversation_sql, init_db
+from chat_langchain import app as langgraph_app
 import uuid
 
 app = FastAPI(title="RAG Q&A Backend (dev)")
@@ -58,10 +60,26 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "Hi", session
     if is_new_session:
         session_id = str(uuid.uuid4())
 
-    # 获取模型回答
-    answer_text, raw_resp = model_choose(model_name, question)
+    # 使用 LangGraph 应用处理请求
+    # 构造输入消息
+    input_messages = {
+        "messages": [HumanMessage(content=question)]
+    }
 
-    # 保存对话历史到数据库 (使用新添加的SQLAlchemy方法)
+    # 配置线程 ID 用于会话记忆
+    config = {"configurable": {"thread_id": session_id}}
+
+    # 调用 LangGraph 应用
+    result = langgraph_app.invoke(input_messages, config=config)
+
+    # 提取 AI 回复
+    answer_text = ""
+    for message in reversed(result["messages"]):
+        if isinstance(message, AIMessage):
+            answer_text = message.content
+            break
+
+    # 保存对话历史到数据库
     save_conversation_json(session_id, question, answer_text, model_name)
     save_conversation_sql(session_id, question, answer_text, model_name)
 
