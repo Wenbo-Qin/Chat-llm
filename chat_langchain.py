@@ -44,6 +44,7 @@ def chat_with_llm(state: MessagesState):
         summary_prompt = (
             "Distill the above chat messages into a single summary message. "
             "Include as many specific details as you can."
+            "Language of summary must in Chinese."
         )
         summary_message = model.invoke(
             input=message_history + [HumanMessage(content=summary_prompt)]
