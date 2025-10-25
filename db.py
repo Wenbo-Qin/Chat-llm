@@ -1,5 +1,5 @@
 # db.py
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, select
 from sqlalchemy.orm import sessionmaker, declarative_base
 import datetime
 
@@ -74,12 +74,21 @@ def save_conversation_sql(session_id: str, question: str, answer_text: str, mode
         db.close()
 
 
+def query_messages_by_session_id_with_time_order(session_id: str):
+    db = SessionLocal()
+    try:
+        messages = db.query(Message).filter(Message.session_id == session_id).order_by(Message.created_at.desc()).first()
+        return messages
+    finally:
+        db.close()
+
+
 def query_all_messages():
     db = SessionLocal()
     try:
         messages = db.query(Message).all()
         for msg in messages:
-            print(f"Session: {msg.session_id}")
+            print(f"SessionId: {msg.session_id}")
             print(f"Role: {msg.role}")
             print(f"text: {msg.text}")
             print(f"created_at: {msg.created_at}")
@@ -90,4 +99,10 @@ def query_all_messages():
 
 # 测试运行：直接执行文件可创建 chat.db
 if __name__ == "__main__":
-    query_all_messages()
+    db = SessionLocal()
+    messages = db.query(Message).filter(Message.session_id == '09b4a444-259f-434a-809c-71f1326d8781').all()
+    # 返回每条消息的text和role
+    for msg in messages:
+        print(f"{msg.created_at}")
+        print(f"{msg.role}: {msg.text}")
+        print("--------")

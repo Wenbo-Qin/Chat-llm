@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 
 
-def save_conversation_json(session_id, question, answer_text, model_name):
+def save_conversation_json(session_id, integrated_messages, question, answer_text, model_name):
     """
     将对话记录保存到JSON文件
 
@@ -22,6 +22,7 @@ def save_conversation_json(session_id, question, answer_text, model_name):
     # 创建对话记录
     new_record = {
         "timestamp": datetime.now().isoformat(),
+        "integrated_messages": integrated_messages,
         "question": question,
         "answer": answer_text,
         "model": model_name

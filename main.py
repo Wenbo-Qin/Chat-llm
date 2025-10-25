@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from model import *
 from save_conversations import *
-from db import save_conversation_sql, init_db
+from db import save_conversation_sql, init_db, query_messages_by_session_id_with_time_order
 from chat_langchain import app as langgraph_app
 import uuid
 
@@ -57,14 +57,21 @@ def read_root():
 def ask_llm(model_name: str = "deepseek-reasoner", question: str = "Hi", session_id: str = None):
     # 如果没有 session_id，说明是新会话
     is_new_session = not session_id
+    history_message = ''
     if is_new_session:
         session_id = str(uuid.uuid4())
-
+    else:
+        # 读取数据库历史消息
+        history_message = query_messages_by_session_id_with_time_order(session_id)
+        print('History messages read.')
+    integrated_messages = "历史记录："+ history_message.text + "。" + "最新对话：" + question
+    print(integrated_messages)
     # 使用 LangGraph 应用处理请求
     # 构造输入消息
     input_messages = {
-        "messages": [HumanMessage(content=question)]
+        "messages": [HumanMessage(content=integrated_messages)]
     }
+    print(input_messages, 'input_message')
 
     # 配置线程 ID 用于会话记忆
     config = {"configurable": {"thread_id": session_id}}
@@ -80,7 +87,7 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "Hi", session
             break
 
     # 保存对话历史到数据库
-    save_conversation_json(session_id, question, answer_text, model_name)
+    save_conversation_json(session_id, integrated_messages, question, answer_text, model_name)
     save_conversation_sql(session_id, question, answer_text, model_name)
 
     # 返回结果包含 session_id
