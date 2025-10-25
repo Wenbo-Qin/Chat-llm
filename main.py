@@ -63,15 +63,12 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "Hi", session
     else:
         # 读取数据库历史消息
         history_message = query_messages_by_session_id_with_time_order(session_id)
-        print('History messages read.')
     integrated_messages = "历史记录："+ history_message.text + "。" + "最新对话：" + question
-    print(integrated_messages)
     # 使用 LangGraph 应用处理请求
     # 构造输入消息
     input_messages = {
         "messages": [HumanMessage(content=integrated_messages)]
     }
-    print(input_messages, 'input_message')
 
     # 配置线程 ID 用于会话记忆
     config = {"configurable": {"thread_id": session_id}}
