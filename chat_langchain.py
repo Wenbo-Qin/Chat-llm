@@ -62,9 +62,6 @@ def chat_with_llm(state: MessagesState):
         message_updates = model.invoke([system_message] + state["messages"])
 
     return {"messages": message_updates}
-    # ai_msg = model.invoke(messages)
-    # print(ai_msg.content)
-    # print(model.model_name)
 
 
 # Define the node and edge
@@ -89,7 +86,4 @@ if __name__ == "__main__":
         },
         config={"configurable": {"thread_id": "4"}},
     )
-    print(result['messages'])
-    # question = input("Enter a sentence in English: ")
-    # chat_with_llm(question)
 
