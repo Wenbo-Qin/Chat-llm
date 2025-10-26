@@ -7,7 +7,8 @@ import datetime
 import os
 # 获取项目根目录
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATABASE_URL = f"sqlite:///{BASE_DIR}/chat.db"
+print(BASE_DIR)
+DATABASE_URL = f"sqlite:///{BASE_DIR}/database/chat-llm.db"
 # 2. 创建数据库引擎
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
@@ -77,6 +78,7 @@ def save_conversation_sql(session_id: str, question: str, answer_text: str, mode
 
 
 def query_messages_by_session_id_with_time_order(session_id: str):
+    init_db()
     db = SessionLocal()
     try:
         # 查询完整 Message 对象
@@ -87,6 +89,7 @@ def query_messages_by_session_id_with_time_order(session_id: str):
 
 
 def query_all_messages():
+    init_db()
     db = SessionLocal()
     try:
         messages = db.query(Message).all()
@@ -102,8 +105,8 @@ def query_all_messages():
 
 # 测试运行：直接执行文件可创建 chat.db
 if __name__ == "__main__":
-    results = query_messages_by_session_id_with_time_order("test")
+    results = query_messages_by_session_id_with_time_order("dev-test")
     if results:
-        print(results.text)
+        print("AI 最新的一条回复是：", results.text)
     else:
         print("没有找到匹配的记录")
