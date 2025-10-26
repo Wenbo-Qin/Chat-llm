@@ -35,7 +35,7 @@ def chat_with_llm(state: MessagesState):
         "You are a helpful assistant. "
         "Answer all questions to the best of your ability. "
         "The provided chat history includes a summary of the earlier conversation."
-        "If \"AI最近一条回复\" appeared, that means this is a latest message that AI answered stored in SQL. You should read and understand it before you answer."
+        "If \"AI最近一条回复\" appeared, that means this is a latest message stored in SQL that AI answered. You should read and understand it before you answer."
     )
     system_message = SystemMessage(content=system_prompt)
     message_history = state["messages"][:-1]  # exclude the most recent user input
