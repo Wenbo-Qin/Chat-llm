@@ -1,4 +1,6 @@
-fastapi
-openai
-langgraph
-pydantic
+fastapi~=0.119.0
+openai~=2.3.0
+langgraph~=0.6.10
+pydantic~=2.12.2
+sqlalchemy~=2.0.44
+uvicorn~=0.37.0

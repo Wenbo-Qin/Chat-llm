@@ -3,9 +3,11 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, s
 from sqlalchemy.orm import sessionmaker, declarative_base
 import datetime
 
-# 1. 数据库 URL（SQLite 文件）
-DATABASE_URL = "sqlite:///./chat.db"
-
+# 1. 数据库 URL（SQLite 文件），使用绝对路径
+import os
+# 获取项目根目录
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATABASE_URL = f"sqlite:///{BASE_DIR}/chat.db"
 # 2. 创建数据库引擎
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
@@ -77,8 +79,9 @@ def save_conversation_sql(session_id: str, question: str, answer_text: str, mode
 def query_messages_by_session_id_with_time_order(session_id: str):
     db = SessionLocal()
     try:
+        # 查询完整 Message 对象
         messages = db.query(Message).filter(Message.session_id == session_id).order_by(Message.created_at.desc()).first()
-        return messages
+        return messages  # 返回实际结果列表
     finally:
         db.close()
 
@@ -99,10 +102,8 @@ def query_all_messages():
 
 # 测试运行：直接执行文件可创建 chat.db
 if __name__ == "__main__":
-    db = SessionLocal()
-    messages = db.query(Message).filter(Message.session_id == '09b4a444-259f-434a-809c-71f1326d8781').all()
-    # 返回每条消息的text和role
-    for msg in messages:
-        print(f"{msg.created_at}")
-        print(f"{msg.role}: {msg.text}")
-        print("--------")
+    results = query_messages_by_session_id_with_time_order("test")
+    if results:
+        print(results.text)
+    else:
+        print("没有找到匹配的记录")
