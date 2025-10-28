@@ -61,4 +61,4 @@ def model_choose(model_name: str, user_content: str):
 
 
 if __name__ == "__main__":
-    model_choose("deepseek")
+    model_choose("deepseek", "你好")
