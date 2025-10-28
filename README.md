@@ -89,8 +89,11 @@ Additionally, we use langchain to memorize the chat history.
 
 ### 12. Embedding模型
 
-- embedding能够实现向量化嵌入操作
+- 利用embedding实现向量化嵌入操作
 - 采用Qwen embedding模型
+
+### 13. 将用户提问与embedding进行整合
+- 为后续数据库存储向量做准备
 
 ### 其他后续
 
