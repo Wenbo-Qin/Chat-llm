@@ -95,6 +95,8 @@ Additionally, we use langchain to memorize the chat history.
 ### 13. 将用户提问与embedding进行整合
 - 为后续数据库存储向量做准备
 
+### 14. 创建数据库存储向量
+
 ### 其他后续
 
 - 融入Springboot服务
