@@ -13,11 +13,18 @@ def save_conversation_json(session_id, question, answer_text, model_name):
         answer_text (str): 模型回答
         model_name (str): 模型名称
     """
+    # 获取项目根目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)  # 从 service 目录回到根目录
+
+    # 构建 conversations 目录的绝对路径
+    conversations_dir = os.path.join(project_root, "conversations")
+
     # 确保保存目录存在
-    os.makedirs("../conversations", exist_ok=True)
+    os.makedirs(conversations_dir, exist_ok=True)
 
     # 构造文件路径
-    file_path = f"conversations/{session_id}.json"
+    file_path = os.path.join(conversations_dir, f"{session_id}.json")
 
     # 创建对话记录
     new_record = {

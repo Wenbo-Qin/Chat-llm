@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
+from embedding import embedding
 from service.history_conversations import load_history_conversation
 from service.save_conversations import *
 from service.db import save_conversation_sql
@@ -20,7 +21,7 @@ def read_root():
     return {"message": "Hello, world! Backend is running."}
 
 
-@router.get("/askLLM")
+@router.post("/askLLM")
 def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", session_id: str = None):
     # 如果没有 session_id，说明是新会话
     is_new_session = not session_id
@@ -56,3 +57,15 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", ses
         "session_id": session_id,
         "answer": answer_text
     })
+
+
+@router.post("/embedding")
+def embedding_text(text: str = "你好"):
+    return JSONResponse(status_code=200, content={
+        "embedding_result": embedding(text)
+    })
+
+
+if __name__ == "__main__":
+    result = ask_llm("你好", session_id="dev-test")
+
