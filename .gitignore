@@ -5,3 +5,4 @@ chat.db
 conversations
 chat.db
 database
+__pycache__/
