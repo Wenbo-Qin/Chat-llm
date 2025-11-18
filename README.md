@@ -97,6 +97,7 @@ Additionally, we use langchain to memorize the chat history.
 - 为后续数据库存储向量做准备
 - 单独做了一个api，而非在askLLM里套用embedding
 
+---以下是即将要做的---
 ### 14. 利用langgraph判断用户是否需要RAG搜索，如果需要，再调用embedding
 
 - 将聊天分为 chat-only和chat + rag。具体路由如何走，暂定由大模型自己判断
