@@ -100,9 +100,16 @@ Additionally, we use langchain to memorize the chat history.
 ### 14. 利用langgraph判断用户是否需要RAG搜索，如果需要，再调用embedding
 
 - 将聊天分为 chat-only和chat + rag。具体路由如何走，暂定由大模型自己判断
-- 需要用到hierarchy机制，需要学习一下
+- 需要用到hierarchy/route机制，需要学习一下
+   - [参考链接](https://docs.langchain.com/oss/python/langgraph/workflows-agents#routing)
+   - 明确hierarchy和route是否有区别，注意用词严谨性
 
 ### 15. 创建数据库存储向量
+- 由于postgre sql在embedding上的优越性能，优先考虑用postgre sql+orm框架存储向量
+
+### 16. 爬虫获取「优质」回答
+- 可以先手动复制粘贴优质回答，再测试embedding+search的效果
+
 
 ### 其他后续
 
