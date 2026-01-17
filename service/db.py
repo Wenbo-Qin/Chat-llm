@@ -31,6 +31,9 @@ class Message(Base):
 
 # 6. 初始化数据库（创建表）
 def init_db():
+    # 确保数据库目录存在
+    db_dir = os.path.join(BASE_DIR, 'database')
+    os.makedirs(db_dir, exist_ok=True)
     Base.metadata.create_all(bind=engine)
 
 
