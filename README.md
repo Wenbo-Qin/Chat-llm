@@ -27,14 +27,14 @@ Additionally, we use langchain to memorize the chat history.
    ``
    Run main.py directly
    ``
-3. Chat with the robot
+3. Open website of Chat with the robot
    - local  
    http://127.0.0.1:8000/docs
    - dev
    - uat
-
+---
 ## 项目进展
-注：由于本人对开发和大模型并不熟悉，无法做到一下做完，只能先实现「最小模型」，在此基础上进行迭代更新。因此，项目进展并不快。项目进展按流程节点进行记录
+注：由于本人对开发和大模型并不熟悉，无法做到一下做完，只能先实现「最小模型」，在此基础上进行迭代更新。因此，项目进展并不快。项目进展按日进行记录
 
 ### 1. 创建基于Fastapi的API，实现前端传入问题到后端
 
@@ -97,20 +97,12 @@ Additionally, we use langchain to memorize the chat history.
 - 为后续数据库存储向量做准备
 - 单独做了一个api，而非在askLLM里套用embedding
 
----以下是即将要做的---
 ### 14. 利用langgraph判断用户是否需要RAG搜索，如果需要，再调用embedding
 
 - 将聊天分为 chat-only和chat + rag。具体路由如何走，暂定由大模型自己判断
-- 需要用到hierarchy/route机制，需要学习一下
-   - [参考链接](https://docs.langchain.com/oss/python/langgraph/workflows-agents#routing)
-   - 明确hierarchy和route是否有区别，注意用词严谨性
+- 需要用到hierarchy机制，需要学习一下
 
 ### 15. 创建数据库存储向量
-- 由于postgre sql在embedding上的优越性能，优先考虑用postgre sql+orm框架存储向量
-
-### 16. 爬虫获取「优质」回答
-- 可以先手动复制粘贴优质回答，再测试embedding+search的效果
-
 
 ### 其他后续
 
