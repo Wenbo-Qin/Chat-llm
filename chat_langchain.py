@@ -1,22 +1,23 @@
 import getpass
 import os
+from dotenv import load_dotenv
 
 from langchain_core.messages import SystemMessage, HumanMessage, RemoveMessage, AIMessage
 
-import env
 from langchain_deepseek import ChatDeepSeek
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import START, MessagesState, StateGraph
+
+load_dotenv()
 
 workflow = StateGraph(state_schema=MessagesState)
 
 # add memory in the next step
 
-if not os.getenv("DEEPSEEK_API_KEY"):
-    os.environ["DEEPSEEK_API_KEY"] = env.deepseek_api_key
+os.environ["DEEPSEEK_API_KEY"] = os.getenv("DEEPSEEK_API_KEY")
 
 # os.environ["LANGSMITH_TRACING"] = "true"
-# os.environ["LANGSMITH_API_KEY"] = env.langchain_api_key
+# os.environ["LANGSMITH_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
 
 
 client = ChatDeepSeek(

@@ -6,3 +6,4 @@ pydantic~=2.12.2
 sqlalchemy~=2.0.44
 uvicorn~=0.37.0
 dashscope~=1.24.8
+python-dotenv~=1.0.0
