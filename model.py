@@ -1,3 +1,4 @@
+from logging import log
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
@@ -11,9 +12,8 @@ def openai_chat():
         model="gpt-5",
         input="Write a one-sentence bedtime story about a unicorn."
     )
-
-    print(response.output_text)
-
+    log.debug("response", response)
+    return response
 
 def deepseek_chat(model: str, user_content: str):
     """
