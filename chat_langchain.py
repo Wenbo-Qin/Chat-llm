@@ -1,3 +1,4 @@
+from asyncio import log
 import getpass
 import os
 from dotenv import load_dotenv
@@ -51,7 +52,7 @@ def chat_with_llm(state: MessagesState):
         summary_message = model.invoke(
             input=message_history + [HumanMessage(content=summary_prompt)]
         )
-        print("summary_message: ", summary_message.content)
+        log.debug("summary_message: ", summary_message.content)
 
         # Delete messages that we no longer want to show up
         delete_messages = [RemoveMessage(id=m.id) for m in state["messages"]]
