@@ -23,7 +23,7 @@ def load_history_conversation(question: str, session_id: str = None):
     # 添加当前用户消息
     messages.append(HumanMessage(content=question))
 
-    log.debug(f"加载历史对话，共 {len(messages)} 条消息")
+    log.debug(f"加载历史对话：{messages}，共 {len(messages)} 条消息")
     return messages
 
 
