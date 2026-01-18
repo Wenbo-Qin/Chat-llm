@@ -1,3 +1,4 @@
+from asyncio import log
 from fastapi import APIRouter
 # api.py
 from fastapi import FastAPI
@@ -36,7 +37,7 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", ses
     input_messages = {
         "messages": messages
     }
-    print("input_messages", input_messages)
+    log.debug("input_messages", input_messages)
 
     # 配置线程 ID 用于会话记忆
     config = {"configurable": {"thread_id": session_id}}
