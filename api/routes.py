@@ -27,11 +27,14 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", ses
     is_new_session = not session_id
     if is_new_session:
         session_id = str(uuid.uuid4())
-    question = load_history_conversation(question, session_id)
+
+    # 加载历史对话，返回完整的消息列表
+    messages = load_history_conversation(question, session_id)
+
     # 使用 LangGraph 应用处理请求
     # 构造输入消息
     input_messages = {
-        "messages": [HumanMessage(content=question)]
+        "messages": messages
     }
     print("input_messages", input_messages)
 
