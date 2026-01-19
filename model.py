@@ -1,26 +1,26 @@
+import logging
 from openai import OpenAI
-
-import env
-from env import *
+from dotenv import load_dotenv
 import os
 
+load_dotenv()
 
+# Connect to different LLM models based on user choice
 def openai_chat():
-    client = OpenAI(api_key=env.opeai_api_key)
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     response = client.responses.create(
         model="gpt-5",
         input="Write a one-sentence bedtime story about a unicorn."
     )
-
-    print(response.output_text)
-
+    logging.debug("response", response)
+    return response
 
 def deepseek_chat(model: str, user_content: str):
     """
     发送 single-turn 聊天请求到 Deepseek（同步方式）。
     返回 (text, raw_response_safe_dict_or_None)
     """
-    client = OpenAI(api_key=env.deepseek_api_key, base_url="https://api.deepseek.com")
+    client = OpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
 
     resp = client.chat.completions.create(
         model=model,
@@ -59,6 +59,6 @@ def model_choose(model_name: str, user_content: str):
     else:
         print("model not found")
 
-
+# test model
 if __name__ == "__main__":
-    model_choose("deepseek", "你好")
+    model_choose("deepseek-chat", "你好")

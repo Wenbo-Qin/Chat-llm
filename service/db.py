@@ -31,6 +31,9 @@ class Message(Base):
 
 # 6. 初始化数据库（创建表）
 def init_db():
+    # 确保数据库目录存在
+    db_dir = os.path.join(BASE_DIR, 'database')
+    os.makedirs(db_dir, exist_ok=True)
     Base.metadata.create_all(bind=engine)
 
 
@@ -81,9 +84,9 @@ def query_messages_by_session_id_with_time_order(session_id: str):
     init_db()
     db = SessionLocal()
     try:
-        # 查询完整 Message 对象
-        messages = db.query(Message).filter(Message.session_id == session_id).order_by(Message.created_at.desc()).first()
-        return messages  # 返回实际结果列表
+        # 查询完整 Message 对象，按时间顺序排列
+        messages = db.query(Message).filter(Message.session_id == session_id).order_by(Message.created_at.asc()).all()
+        return messages  # 返回所有消息列表
     finally:
         db.close()
 

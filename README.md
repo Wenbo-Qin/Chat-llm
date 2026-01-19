@@ -27,12 +27,12 @@ Additionally, we use langchain to memorize the chat history.
    ``
    Run main.py directly
    ``
-3. Chat with the robot
+3. Open website of Chat with the robot
    - local  
-   http://127.0.0.1:8000/docs
+      http://localhost:8000/docs
    - dev
    - uat
-
+---
 ## 项目进展
 注：由于本人对开发和大模型并不熟悉，无法做到一下做完，只能先实现「最小模型」，在此基础上进行迭代更新。因此，项目进展并不快。项目进展按日进行记录
 

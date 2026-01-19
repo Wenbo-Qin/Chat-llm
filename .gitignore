@@ -1,7 +1,9 @@
 test.py
 .idea
 env.py
+.env
 chat.db
 conversations
 chat.db
 database
+__pycache__/
