@@ -1,7 +1,9 @@
-from asyncio import log
 import getpass
+import logging
 import os
 from dotenv import load_dotenv
+
+## sys.path.insert(0, r'C:\Users\dell\AppData\Roaming\Python\Python314\site-packages')
 
 from langchain_core.messages import SystemMessage, HumanMessage, RemoveMessage, AIMessage
 
@@ -52,7 +54,7 @@ def chat_with_llm(state: MessagesState):
         summary_message = model.invoke(
             input=message_history + [HumanMessage(content=summary_prompt)]
         )
-        log.debug("summary_message: ", summary_message.content)
+        logging.debug("summary_message: ", summary_message.content)
 
         # Delete messages that we no longer want to show up
         delete_messages = [RemoveMessage(id=m.id) for m in state["messages"]]
