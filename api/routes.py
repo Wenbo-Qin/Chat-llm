@@ -1,4 +1,4 @@
-from asyncio import log
+import logging
 from fastapi import APIRouter
 # api.py
 from fastapi import FastAPI
@@ -11,6 +11,8 @@ from service.save_conversations import *
 from service.db import save_conversation_sql
 from chat_langchain import app as langgraph_app
 import uuid
+from fastapi.responses import JSONResponse
+import asyncio
 
 app = FastAPI(title="RAG Q&A Backend (dev)")
 
@@ -37,7 +39,7 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", ses
     input_messages = {
         "messages": messages
     }
-    log.debug("input_messages", input_messages)
+    logging.debug(f"input_messages: {input_messages}")
 
     # 配置线程 ID 用于会话记忆
     config = {"configurable": {"thread_id": session_id}}
@@ -68,7 +70,6 @@ def embedding_text(text: str = "你好"):
     return JSONResponse(status_code=200, content={
         "embedding_result": embedding(text)
     })
-
 
 if __name__ == "__main__":
     result = ask_llm("你好", session_id="dev-test")
