@@ -71,6 +71,11 @@ def embedding_text(text: str = "你好"):
         "embedding_result": embedding(text)
     })
 
+@router.post("/mcp")
+def mcp():
+    return None
+
+
 if __name__ == "__main__":
     result = ask_llm("你好", session_id="dev-test")
 
