@@ -130,7 +130,7 @@ async def team_leader_task(question: str):
             content={
                 "question": question,
                 "answer": final_answer,
-                "conversation_history": conversation_history,
+                # "conversation_history": conversation_history,
                 "task_completed": final_state.get("task_completed", False)
             }
         )
