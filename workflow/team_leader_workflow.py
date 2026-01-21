@@ -50,6 +50,7 @@ async def llm_chat(state: State) -> State:
         mcp_tools = await client.get_tools()
 
         # Create an agent using the create_agent function
+        # Create an agent using the create_agent function
         agent = create_agent(
             "deepseek-chat", 
             mcp_tools,
@@ -57,13 +58,14 @@ async def llm_chat(state: State) -> State:
                 content=[
                     {
                         "type": "text",
-                        "text": f"You are a helpful AI assistant. Context: {state.get('conversation_history', [])}. Answer the user's query: {state['input']}",
+                        "text": f"You are a helpful AI assistant. Answer the user's query: {state['input']}",
                     }
                 ]
             )
         )
         
         result = await agent.ainvoke({"messages": [HumanMessage(content=state['input'])]})
+        print(result)
         logging.debug(result)
         # Extract the AI's response from the result
         ai_message = None
@@ -92,7 +94,7 @@ async def llm_chat(state: State) -> State:
     return state
 
 @tool
-def llm_rag(state: State) -> State:
+async def llm_rag(state: State) -> State:
     """RAG implementation placeholder"""
     # Placeholder for RAG implementation (will be implemented later)
     response = f"[RAG functionality not yet implemented] Response to: {state['input']}"
@@ -175,13 +177,13 @@ def check_completion(state: State) -> State:
     #all_responses = " ".join([item['content'] for item in conversation_history if item['role'] == 'assistant'])
     
     client = ChatOpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com",
-    model="deepseek-chat")
+        api_key=os.getenv("DEEPSEEK_API_KEY"),
+        base_url="https://api.deepseek.com",
+        model="deepseek-chat")
 
     prompt = f"""
     You are a helpful AI assistant. Based on the AI answer: {state['output']} and user query: {state['input']}
-    decide whether to End conversation or still use the model to generate a new answer. 
+    decide whether to end conversation or still use the model to generate a new answer. 
     
     If the answer is corresponding to the user query and the task is complete, respond with True.
     If the answer is not corresponding to the user query and the task is not complete, respond with False.
