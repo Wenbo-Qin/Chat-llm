@@ -11,8 +11,9 @@ from service.save_conversations import *
 from service.db import save_conversation_sql
 from chat_langchain import app as langgraph_app
 import uuid
-from fastapi.responses import JSONResponse
 import asyncio
+from workflow.team_leader_workflow import graph
+from typing import Dict, Any
 
 app = FastAPI(title="RAG Q&A Backend (dev)")
 
@@ -71,11 +72,77 @@ def embedding_text(text: str = "你好"):
         "embedding_result": embedding(text)
     })
 
+
 @router.post("/mcp")
 def mcp():
     return None
 
 
-if __name__ == "__main__":
-    result = ask_llm("你好", session_id="dev-test")
+@router.post("/team-leader-task")  # will rename to chat-task
+async def team_leader_task(question: str):
+    """
+    API endpoint that invokes the team leader workflow to handle user tasks
+    """
+    try:
+        # Initialize the state for the workflow
+        initial_state = {
+            # "current_step": "start",
+            "input": question,
+            "output": "",
+            "conversation_history": [],
+            "task_completed": False,
+            "messages": [],  # Required for LangGraph tools_condition
+            # "iteration_count": 0
+        }
 
+        # Run the workflow asynchronously
+        final_state = await graph.ainvoke(initial_state, config={"max_iterations": 10})
+
+        # Extract the final answer from the workflow result
+        # Try to get the content from the last tool message in messages
+        messages = final_state.get("messages", [])
+        final_answer = "未能生成有效回答"
+        
+        # Look for the last AIMessage with content in the messages
+        for msg in reversed(messages):
+            if hasattr(msg, 'content') and msg.content:
+                try:
+                    # Check if content is a JSON string that needs parsing
+                    import json
+                    content = msg.content
+                    if isinstance(content, str) and content.startswith('{'):
+                        # Parse the JSON string and extract the output
+                        parsed_content = json.loads(content)
+                        final_answer = parsed_content.get('output', content)
+                    else:
+                        # Content is already a string
+                        final_answer = content
+                except json.JSONDecodeError:
+                    # If JSON parsing fails, use the content as is
+                    final_answer = msg.content
+                break
+        
+        # Extract conversation history for context
+        conversation_history = final_state.get("conversation_history", [])
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "question": question,
+                "answer": final_answer,
+                "conversation_history": conversation_history,
+                "task_completed": final_state.get("task_completed", False)
+            }
+        )
+    except Exception as e:
+        logging.error(f"Error in team_leader_task: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": f"处理请求时发生错误: {str(e)}"
+            }
+        )
+
+
+if __name__ == "__main__":
+    pass
