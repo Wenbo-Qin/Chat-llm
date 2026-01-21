@@ -4,7 +4,7 @@ mcp = FastMCP("weather-service")
 
 
 @mcp.tool()
-async def get_current_weather(city: str) -> str:
+def get_current_weather(city: str) -> str:
     """
     Get current weather for a city
     """
@@ -31,7 +31,7 @@ async def get_current_weather(city: str) -> str:
 
 
 @mcp.tool()
-async def get_forecast(city: str) -> str:
+def get_forecast(city: str) -> str:
     """
     Get 3-day weather forecast for a city
     """
@@ -49,7 +49,7 @@ async def get_forecast(city: str) -> str:
 
 
 @mcp.tool()
-async def get_temperature_unit() -> str:
+def get_temperature_unit() -> str:
     """
     Get the temperature unit used in this service
     """
