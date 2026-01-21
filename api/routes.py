@@ -96,7 +96,7 @@ async def team_leader_task(question: str):
         }
 
         # Run the workflow asynchronously
-        final_state = await graph.ainvoke(initial_state, config={"max_iterations": 10})
+        final_state = await graph.ainvoke(initial_state, config={"max_iterations": 2})
 
         # Extract the final answer from the workflow result
         # Try to get the content from the last tool message in messages
