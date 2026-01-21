@@ -50,7 +50,6 @@ async def llm_chat(state: State) -> State:
         mcp_tools = await client.get_tools()
 
         # Create an agent using the create_agent function
-        # Create an agent using the create_agent function
         agent = create_agent(
             "deepseek-chat", 
             mcp_tools,
