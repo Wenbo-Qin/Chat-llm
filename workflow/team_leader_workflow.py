@@ -28,6 +28,33 @@ class State(TypedDict):
 
 @tool
 async def llm_chat(state: State) -> State:
+    """Create an answer to the user's query using the LLM model"""
+    try:
+        agent = ChatOpenAI(
+            api_key=os.getenv("DEEPSEEK_API_KEY"),
+            base_url="https://api.deepseek.com",
+            model="deepseek-chat")
+        result = await agent.ainvoke({"messages": [HumanMessage(content=state['input'])]})
+        print(result)
+        logging.debug(result)
+        # Extract the AI's response from the result
+        ai_message = None
+        if 'messages' in result:
+            # Find the last AI message in the conversation
+            for msg in reversed(result['messages']):
+                if isinstance(msg, AIMessage):
+                    ai_message = msg
+                    break
+        
+        response = ai_message.content if ai_message else "Could not generate a response"
+    except Exception as e:
+        logging.error(f"Error in llm_query: {str(e)}")
+        response = f"An error occurred while processing your request: {str(e)}"
+    
+    # Only return the response string
+    return response
+@tool
+async def llm_query(state: State) -> State:
     """Create an MCP client that connects to both calculator and weather servers"""
     # Create an MCP client that connects to both calculator and weather servers
     client = MultiServerMCPClient(
@@ -77,7 +104,7 @@ async def llm_chat(state: State) -> State:
         
         response = ai_message.content if ai_message else "Could not generate a response"
     except Exception as e:
-        logging.error(f"Error in llm_chat: {str(e)}")
+        logging.error(f"Error in llm_query: {str(e)}")
         response = f"An error occurred while processing your request: {str(e)}"
     
     # Only return the response string
@@ -87,7 +114,7 @@ async def llm_chat(state: State) -> State:
 async def llm_rag(state: State) -> str:
     """RAG implementation placeholder"""
     # Placeholder for RAG implementation (will be implemented later)
-    response = f"[RAG functionality not yet implemented] Response to: {state['input']}"
+    response = {"output": f"RAG functionality not yet implemented Response to: {state['input']}"}
     # Only return the response string
     return response
 
@@ -102,15 +129,18 @@ def team_leader(state: State) -> State:
 
     prompt = f"""
     You are a helpful AI assistant. Based on the user's query: {state['input']},
-    decide whether to use llm_chat for calculations, weather info or common conversations, 
+    decide whether to use llm_chat for common conversations,llm_query for calculations, weather info,
     or llm_rag for document retrieval or research.
     
-    If the query is related to calculations, math operations, weather information or common conversations, call the llm_chat tool.
+    If the query is about common chat (especially without a question), call the llm_chat tool.
+    If the query is related to calculations, math operations, weather information or common conversations, call the llm_query tool.
     If it requires document retrieval, research, or detailed information retrieval, call the llm_rag tool.
+    
+    Additionally, if you choose llm_query, you should translate the query city name into English with lowercase before calling llm_query.
     """
     
     # Bind the tools to the client
-    model_with_tool = client.bind_tools([llm_chat, llm_rag])
+    model_with_tool = client.bind_tools([llm_chat, llm_query, llm_rag])
     logging.debug(f"team_leader input: {state['input']}")
 
     # Use the tool-bound model to decide and return a response with tool call
@@ -130,8 +160,6 @@ def check_completion(state: State) -> State:
     """
     Determines if the task has been completed based on the user query and AI responses
     """
-    user_query = state['input'].lower()
-    conversation_history = state.get('conversation_history', [])
     
     # Combine all responses for analysis
     #all_responses = " ".join([item['content'] for item in conversation_history if item['role'] == 'assistant'])
@@ -149,6 +177,8 @@ def check_completion(state: State) -> State:
     If the answer is not corresponding to the user query and the task is not complete, respond with False.
     If user did not ask a question, respond with True.
     
+    Do not respond with anything else.
+
     For example, in these two cases, the tasks are complete, so you should respond with True:
     ### Case 1:
     User: My name is John.
@@ -157,8 +187,6 @@ def check_completion(state: State) -> State:
     ### Case 2:
     User: What's the weather like in New York City?
     AI: The weather in New York City is sunny with a high of 75 degrees.
-
-    Do not respond with anything else.
     """
     
     # # Simple heuristic to determine if the task is complete
@@ -186,12 +214,12 @@ def check_completion(state: State) -> State:
 
 def route_based_on_decision(state: State) -> str:
     """
-    Route to either llm_chat or llm_rag based on team leader decision
+    Route to llm_chat, llm_query or llm_rag based on team leader decision
     """
     decision = team_leader(state)
     return decision
 
-tool_node = ToolNode([llm_chat, llm_rag])
+tool_node = ToolNode([llm_chat, llm_query, llm_rag])
 
 async def retrieve(state: State) -> State:
     """Execute tool and update state with result"""
