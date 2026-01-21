@@ -92,26 +92,6 @@ async def llm_rag(state: State) -> str:
     # Only return the response string
     return response
 
-# @tool
-# def llm_chat(city: Literal["nyc", "sf"]):
-#     """Use this to get weather information."""
-#     if city == "nyc":
-#         return "It is cloudy in NYC, with 5 mph winds in the North-East direction and a temperature of 70 degrees"
-#     elif city == "sf":
-#         return "It is 75 degrees and sunny in SF, with 3 mph winds in the South-East direction"
-#     else:
-#         raise AssertionError("Unknown city")
-    
-
-# @tool
-# def llm_rag(city: Literal["nyc", "sf"]):
-#     """Use this to get weather information."""
-#     if city == "nyc":
-#         return "It is cloudy in NYC, with 5 mph winds in the North-East direction and a temperature of 70 degrees"
-#     elif city == "sf":
-#         return "It is 75 degrees and sunny in SF, with 3 mph winds in the South-East direction"
-#     else:
-#         raise AssertionError("Unknown city")
 def team_leader(state: State) -> State:
     """
     Use agent to understand user intent and decide workflow path by calling appropriate tool
