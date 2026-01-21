@@ -81,35 +81,16 @@ async def llm_chat(state: State) -> State:
         logging.error(f"Error in llm_chat: {str(e)}")
         response = f"An error occurred while processing your request: {str(e)}"
     
-    # Update conversation history
-    updated_history = state.get('conversation_history', []).copy()
-    updated_history.append({"role": "assistant", "content": response})
-    
-    # Prepare new state
-    # new_state = state.copy()
-    state["output"] = response
-    state["conversation_history"] = updated_history
-    # state["iteration_count"] = state.get('iteration_count', 0) + 1
-    
-    return state
+    # Only return the response string
+    return response
 
 @tool
-async def llm_rag(state: State) -> State:
+async def llm_rag(state: State) -> str:
     """RAG implementation placeholder"""
     # Placeholder for RAG implementation (will be implemented later)
     response = f"[RAG functionality not yet implemented] Response to: {state['input']}"
-    
-    # Update conversation history
-    updated_history = state.get('conversation_history', []).copy()
-    updated_history.append({"role": "assistant", "content": response})
-    
-    # Prepare new state
-    # new_state = state.copy()
-    state["output"] = response
-    state["conversation_history"] = updated_history
-    # state["iteration_count"] = state.get('iteration_count', 0) + 1
-    
-    return state
+    # Only return the response string
+    return response
 
 # @tool
 # def llm_chat(city: Literal["nyc", "sf"]):
@@ -233,12 +214,40 @@ def route_based_on_decision(state: State) -> str:
 
 tool_node = ToolNode([llm_chat, llm_rag])
 
+async def retrieve(state: State) -> State:
+    """Execute tool and update state with result"""
+    # Call ToolNode to execute the tool
+    result_state = await tool_node.ainvoke(state)
+    
+    # Extract the tool result from messages
+    messages = result_state.get("messages", [])
+    output = state.get("output", "")
+    
+    # The last message should be ToolMessage with the tool result
+    for msg in reversed(messages):
+        if hasattr(msg, 'content') and isinstance(msg.content, str):
+            output = msg.content
+            break
+    
+    # Update conversation history with the output
+    updated_history = state.get('conversation_history', []).copy()
+    updated_history.append({"role": "assistant", "content": output})
+    
+    # Return updated state
+    return {
+        "input": state["input"],
+        "output": output,
+        "conversation_history": updated_history,
+        "messages": messages,
+        "task_completed": state.get("task_completed", False)
+    }
+
 # Create workflow graph  
 workflow = StateGraph(State)
 
 # Define nodes
 workflow.add_node("team_leader", team_leader)
-workflow.add_node("retrieve", tool_node)
+workflow.add_node("retrieve", retrieve)
 workflow.add_node("check_completion", check_completion)
 
 # Add entry point
