@@ -28,7 +28,7 @@ class State(TypedDict):
 
 @tool
 async def llm_chat(state: State) -> State:
-    """Create an answer to the user's query using the LLM model"""
+    """Create an answer to the user's common chat."""
     try:
         agent = ChatOpenAI(
             api_key=os.getenv("DEEPSEEK_API_KEY"),
@@ -129,10 +129,10 @@ def team_leader(state: State) -> State:
 
     prompt = f"""
     You are a helpful AI assistant. Based on the user's query: {state['input']},
-    decide whether to use llm_chat for common conversations,llm_query for calculations, weather info,
+    decide whether to use llm_chat for common conversations, llm_query for calculations, weather info,
     or llm_rag for document retrieval or research.
     
-    If the query is about common chat (especially without a question), call the llm_chat tool.
+    If the query is about common chat (for example, common greeting ,.etc), call the llm_chat tool.
     If the query is related to calculations, math operations, weather information or common conversations, call the llm_query tool.
     If it requires document retrieval, research, or detailed information retrieval, call the llm_rag tool.
     
@@ -204,11 +204,7 @@ def check_completion(state: State) -> State:
     logging.debug(f"check_completion response: {response.content}")
     logging.debug(f"state: {state}")
     state['task_completed'] = response.content
-    # 有逻辑/语法问题，state['iteration_count']无法访问，会报错
-    # state['task_completed'] = False
-    # logging.debug(state['iteration_count'])
-    # if state['iteration_count'] >= 2:
-    #     state['task_completed'] = True
+    # state['task_completed'] = True # for debug only
     return state
 
 
