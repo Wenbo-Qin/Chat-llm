@@ -30,23 +30,24 @@ def deepseek_chat(model: str, user_content: str):
         ],
         stream=False
     )
+    # print("Deepseek response:", resp.choices[0].message.content)
+    return resp.choices[0].message.content
+    # # 从 SDK 响应里提取文本（按你示例的结构）
+    # try:
+    #     text = resp.choices[0].message.content
+    # except Exception:
+    #     # 若 SDK 返回结构不同，保护性返回整个 resp 的字符串表示
+    #     text = getattr(resp, "text", None) or str(resp)
 
-    # 从 SDK 响应里提取文本（按你示例的结构）
-    try:
-        text = resp.choices[0].message.content
-    except Exception:
-        # 若 SDK 返回结构不同，保护性返回整个 resp 的字符串表示
-        text = getattr(resp, "text", None) or str(resp)
+    # # 尝试把原始响应序列化为 dict（如果 SDK 支持 to_dict 方法）
+    # raw = None
+    # if hasattr(resp, "to_dict"):
+    #     try:
+    #         raw = resp.to_dict()
+    #     except Exception:
+    #         raw = None
 
-    # 尝试把原始响应序列化为 dict（如果 SDK 支持 to_dict 方法）
-    raw = None
-    if hasattr(resp, "to_dict"):
-        try:
-            raw = resp.to_dict()
-        except Exception:
-            raw = None
-
-    return text, raw
+    # return text, raw
 
 
 def model_choose(model_name: str, user_content: str):
