@@ -5,16 +5,11 @@ from langchain.agents import create_agent
 from langchain.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_core.tools import tool
-from openai import OpenAI
-from typing import Literal
-
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 import os
 import logging
-from model import model_choose
 
-from pydantic import Field
 load_dotenv()
 
 class State(TypedDict):
@@ -25,6 +20,7 @@ class State(TypedDict):
     task_completed: bool  # flag to check if task is completed
     # iteration_count: int=Field(default=0)  # counter to prevent infinite loops
 
+# Global agent instance
 agent = ChatOpenAI(
     api_key=os.getenv("DEEPSEEK_API_KEY"),
     base_url="https://api.deepseek.com",
@@ -61,7 +57,7 @@ async def llm_query(state: State) -> State:
             "calculator_service": {
                 "transport": "stdio",
                 "command": "python",
-                "args": ["mcp_tool/calculate_server.py"],
+                "args": ["mcp_tool/calculator_server.py"],
             },
             "weather_service": {
                 "transport": "stdio",
