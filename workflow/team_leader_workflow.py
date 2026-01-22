@@ -16,7 +16,6 @@ from model import model_choose
 
 from pydantic import Field
 load_dotenv()
-model = ChatOpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
 
 class State(TypedDict):
     input: str  # user query input
@@ -26,16 +25,16 @@ class State(TypedDict):
     task_completed: bool  # flag to check if task is completed
     # iteration_count: int=Field(default=0)  # counter to prevent infinite loops
 
+agent = ChatOpenAI(
+    api_key=os.getenv("DEEPSEEK_API_KEY"),
+    base_url="https://api.deepseek.com",
+    model="deepseek-chat")
+
 @tool
 async def llm_chat(state: State) -> State:
     """Create an answer to the user's common chat."""
     try:
-        agent = ChatOpenAI(
-            api_key=os.getenv("DEEPSEEK_API_KEY"),
-            base_url="https://api.deepseek.com",
-            model="deepseek-chat")
-        result = await agent.ainvoke({"messages": [HumanMessage(content=state['input'])]})
-        print(result)
+        result = await agent.ainvoke([HumanMessage(content=state['input'])])
         logging.debug(result)
         # Extract the AI's response from the result
         ai_message = None
@@ -48,7 +47,7 @@ async def llm_chat(state: State) -> State:
         
         response = ai_message.content if ai_message else "Could not generate a response"
     except Exception as e:
-        logging.error(f"Error in llm_query: {str(e)}")
+        logging.error(f"Error in llm_chat: {str(e)}")
         response = f"An error occurred while processing your request: {str(e)}"
     
     # Only return the response string
@@ -91,7 +90,6 @@ async def llm_query(state: State) -> State:
         )
         
         result = await agent.ainvoke({"messages": [HumanMessage(content=state['input'])]})
-        print(result)
         logging.debug(result)
         # Extract the AI's response from the result
         ai_message = None
@@ -122,25 +120,22 @@ def team_leader(state: State) -> State:
     """
     Use agent to understand user intent and decide workflow path by calling appropriate tool
     """
-    client = ChatOpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com",
-        model="deepseek-chat")
 
     prompt = f"""
     You are a helpful AI assistant. Based on the user's query: {state['input']},
     decide whether to use llm_chat for common conversations, llm_query for calculations, weather info,
     or llm_rag for document retrieval or research.
-    
+
     If the query is about common chat (for example, common greeting ,.etc), call the llm_chat tool.
     If the query is related to calculations, math operations, weather information or common conversations, call the llm_query tool.
     If it requires document retrieval, research, or detailed information retrieval, call the llm_rag tool.
     
-    Additionally, if you choose llm_query, you should translate the query city name into English with lowercase before calling llm_query.
+    
+    Additionally, if you choose weather realated tool in llm_query, you should translate the query city name into English with lowercase before calling llm_query.
     """
     
     # Bind the tools to the client
-    model_with_tool = client.bind_tools([llm_chat, llm_query, llm_rag])
+    model_with_tool = agent.bind_tools([llm_chat, llm_query, llm_rag])
     logging.debug(f"team_leader input: {state['input']}")
 
     # Use the tool-bound model to decide and return a response with tool call
@@ -163,11 +158,6 @@ def check_completion(state: State) -> State:
     
     # Combine all responses for analysis
     #all_responses = " ".join([item['content'] for item in conversation_history if item['role'] == 'assistant'])
-    
-    client = ChatOpenAI(
-        api_key=os.getenv("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com",
-        model="deepseek-chat")
 
     prompt = f"""
     You are a helpful AI assistant. Based on the AI answer: {state['output']} and user query: {state['input']}
@@ -198,7 +188,7 @@ def check_completion(state: State) -> State:
     # ]
     
     # Return updated state with completion status
-    response = client.invoke([
+    response = agent.invoke([
         HumanMessage(content=prompt)
     ])
     logging.debug(f"check_completion response: {response.content}")
@@ -250,7 +240,7 @@ workflow = StateGraph(State)
 
 # Define nodes
 workflow.add_node("team_leader", team_leader)
-workflow.add_node("retrieve", retrieve)
+workflow.add_node("retrieve", tool_node)
 workflow.add_node("check_completion", check_completion)
 
 # Add entry point
