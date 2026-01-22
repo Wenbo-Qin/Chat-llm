@@ -6,9 +6,9 @@ from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
 from embedding import embedding
-from service.history_conversations import load_history_conversation
-from service.save_conversations import *
-from service.db import save_conversation_sql
+from db_service.history_conversations import load_history_conversation
+from db_service.save_conversations import *
+from db_service.db import save_conversation_sql
 from chat_langchain import app as langgraph_app
 import uuid
 import asyncio

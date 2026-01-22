@@ -1,5 +1,5 @@
 import logging
-from service.db import query_messages_by_session_id_with_time_order, query_all_messages, init_db
+from db_service.db import query_messages_by_session_id_with_time_order, query_all_messages, init_db
 from langchain_core.messages import HumanMessage, AIMessage
 
 init_db()  # 确保表已创建
