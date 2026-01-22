@@ -14,7 +14,8 @@ def embedding(input_text: str = "衣服的质量杠杠的"):
     )
 
     if resp.status_code == HTTPStatus.OK:
-        # print(type(resp))
-        # print(resp.output)
-        # print(resp.output['embeddings'][0]['embedding'])
+        print("Embedding successful\n")
         return resp.output['embeddings'][0]['embedding']
+
+if __name__ == "__main__":
+    print(embedding())
