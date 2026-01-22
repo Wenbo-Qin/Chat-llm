@@ -5,10 +5,10 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
-from embedding import embedding
-from service.history_conversations import load_history_conversation
-from service.save_conversations import *
-from service.db import save_conversation_sql
+from embedding_service import embedding
+from db_service.history_conversations import load_history_conversation
+from db_service.save_conversations import *
+from db_service.db import save_conversation_sql
 from chat_langchain import app as langgraph_app
 import uuid
 import asyncio
@@ -73,11 +73,6 @@ def embedding_text(text: str = "你好"):
     })
 
 
-@router.post("/mcp")
-def mcp():
-    return None
-
-
 @router.post("/team-leader-task")  # will rename to chat-task
 async def team_leader_task(question: str):
     """
@@ -96,7 +91,7 @@ async def team_leader_task(question: str):
         }
 
         # Run the workflow asynchronously
-        final_state = await graph.ainvoke(initial_state, config={"max_iterations": 10})
+        final_state = await graph.ainvoke(initial_state, config={"max_iterations": 2})
 
         # Extract the final answer from the workflow result
         # Try to get the content from the last tool message in messages
@@ -130,7 +125,7 @@ async def team_leader_task(question: str):
             content={
                 "question": question,
                 "answer": final_answer,
-                "conversation_history": conversation_history,
+                # "conversation_history": conversation_history,
                 "task_completed": final_state.get("task_completed", False)
             }
         )
