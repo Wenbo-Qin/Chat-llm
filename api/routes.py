@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
-from embedding import embedding
+from embedding_service import embedding
 from db_service.history_conversations import load_history_conversation
 from db_service.save_conversations import *
 from db_service.db import save_conversation_sql
@@ -71,11 +71,6 @@ def embedding_text(text: str = "你好"):
     return JSONResponse(status_code=200, content={
         "embedding_result": embedding(text)
     })
-
-
-@router.post("/mcp")
-def mcp():
-    return None
 
 
 @router.post("/team-leader-task")  # will rename to chat-task
