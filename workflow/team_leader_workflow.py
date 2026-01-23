@@ -32,22 +32,15 @@ async def llm_chat(state: State) -> State:
     try:
         result = await agent.ainvoke([HumanMessage(content=state['input'])])
         logging.debug(result)
-        # Extract the AI's response from the result
-        ai_message = None
-        if 'messages' in result:
-            # Find the last AI message in the conversation
-            for msg in reversed(result['messages']):
-                if isinstance(msg, AIMessage):
-                    ai_message = msg
-                    break
-        
-        response = ai_message.content if ai_message else "Could not generate a response"
+        # result is an AIMessage object, extract the content directly
+        response = result.content if hasattr(result, 'content') else str(result)
     except Exception as e:
         logging.error(f"Error in llm_chat: {str(e)}")
         response = f"An error occurred while processing your request: {str(e)}"
     
-    # Only return the response string
-    return response
+    # Return the response as part of the state
+    return {"output": response, "input": state["input"], "conversation_history": state.get("conversation_history", [])}
+
 @tool
 async def llm_query(state: State) -> State:
     """Create an MCP client that connects to both calculator and weather servers"""
@@ -72,7 +65,7 @@ async def llm_query(state: State) -> State:
         mcp_tools = await client.get_tools()
 
         # Create an agent using the create_agent function
-        agent = create_agent(
+        agent_for_query = create_agent(
             "deepseek-chat", 
             mcp_tools,
             system_prompt=SystemMessage(
@@ -85,32 +78,36 @@ async def llm_query(state: State) -> State:
             )
         )
         
-        result = await agent.ainvoke({"messages": [HumanMessage(content=state['input'])]})
+        result = await agent_for_query.ainvoke({"messages": [HumanMessage(content=state['input'])]})
         logging.debug(result)
-        # Extract the AI's response from the result
-        ai_message = None
-        if 'messages' in result:
-            # Find the last AI message in the conversation
-            for msg in reversed(result['messages']):
-                if isinstance(msg, AIMessage):
-                    ai_message = msg
-                    break
-        
-        response = ai_message.content if ai_message else "Could not generate a response"
+        # Handle the result - could be a message object or string
+        if hasattr(result, 'content'):
+            response = result.content
+        elif isinstance(result, dict) and 'output' in result:
+            response = result['output']
+        else:
+            response = str(result)
     except Exception as e:
         logging.error(f"Error in llm_query: {str(e)}")
         response = f"An error occurred while processing your request: {str(e)}"
     
-    # Only return the response string
-    return response
+    # Return the response as part of the state
+    return {"output": response, "input": state["input"], "conversation_history": state.get("conversation_history", [])}
 
 @tool
-async def llm_rag(state: State) -> str:
-    """RAG implementation placeholder"""
-    # Placeholder for RAG implementation (will be implemented later)
-    response = {"output": f"RAG functionality not yet implemented Response to: {state['input']}"}
-    # Only return the response string
-    return response
+async def llm_rag(state: State) -> State:
+    """RAG tool for answering user queries about mental health."""
+    try:
+        result = await agent.ainvoke([HumanMessage(content=state['input'])])
+        logging.debug(result)
+        # result is an AIMessage object, extract the content directly
+        response = result.content if hasattr(result, 'content') else str(result)
+    except Exception as e:
+        logging.error(f"Error in llm_rag: {str(e)}")
+        response = f"An error occurred while processing your request: {str(e)}"
+    
+    # Return the response as part of the state
+    return {"output": response, "input": state["input"], "conversation_history": state.get("conversation_history", [])}
 
 def team_leader(state: State) -> State:
     """
@@ -236,7 +233,7 @@ workflow = StateGraph(State)
 
 # Define nodes
 workflow.add_node("team_leader", team_leader)
-workflow.add_node("retrieve", tool_node)
+workflow.add_node("retrieve", retrieve)
 workflow.add_node("check_completion", check_completion)
 
 # Add entry point
