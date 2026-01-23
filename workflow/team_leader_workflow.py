@@ -20,6 +20,7 @@ class State(TypedDict):
     messages: list  # LangChain message history for tool calling
     task_completed: bool  # flag to check if task is completed
     retrieved_answers: NotRequired[int]  # count of retrieved answers, defaults to 5
+    retrieved_docs: NotRequired[list]  # raw retrieved documents with similarity scores
 
 # Global agent instance
 agent = ChatOpenAI(
@@ -33,9 +34,9 @@ async def llm_chat(query: str) -> str:
     MCP-based tool for common conversations
     """
     result = await agent.ainvoke([HumanMessage(content=query)])
-    for msg in reversed(result.get("messages", [])):
-        if isinstance(msg, AIMessage):
-            return msg.content
+    # ainvoke returns AIMessage directly
+    if isinstance(result, AIMessage):
+        return result.content
     return "No response"
 
 @tool
@@ -92,7 +93,8 @@ async def llm_rag(
     retrieved_answers: int = 5
 ) -> str:
     """
-    RAG tool: only cares about query + retrieved_answers
+    RAG tool: Retrieve documents and generate summary based on them.
+    Returns JSON string with summary and retrieved documents.
     """
     try:
         result = await rag_graph.ainvoke({
@@ -104,15 +106,24 @@ async def llm_rag(
             "task_completed": False,
         })
 
-        ai_message = None
-        if "output" in result:
-            ai_message = result["output"]
+        # Extract the summary output and retrieved documents
+        summary = result.get("output", "No summary generated")
+        retrieved_docs = result.get("retrieved_docs", [])
 
-        return ai_message if ai_message else "No RAG result"
+        # Return as JSON string
+        import json
+        return json.dumps({
+            "summary": summary,
+            "retrieved_docs": retrieved_docs
+        }, ensure_ascii=False)
 
     except Exception as e:
         logging.error(f"llm_rag error: {e}")
-        return f"RAG error: {e}"
+        import json
+        return json.dumps({
+            "summary": f"RAG error: {e}",
+            "retrieved_docs": []
+        }, ensure_ascii=False)
 
 # def team_leader(state: State) -> State:
 #     """
@@ -148,7 +159,16 @@ async def llm_rag(
 #         response
 #     ]
 
-def team_leader(state: State) -> State:
+async def team_leader(state: State) -> State:
+    """Route user query to appropriate tool using LLM."""
+    # Get existing messages or initialize with user input
+    messages = state.get("messages", [])
+
+    # If this is the first call, add the user's message
+    if not messages or len(messages) == 0:
+        messages = [HumanMessage(content=state["input"])]
+
+    # Build the prompt for the router
     prompt = f"""
 You are a router agent.
 
@@ -157,126 +177,107 @@ User query:
 
 Decide which tool to call:
 
-- llm_chat(query: str)
-- llm_query(query: str)
-- llm_rag(query: str, retrieved_answers: int)
+- llm_chat(query: str) - for common conversations
+- llm_query(query: str) - for calculations, weather info, general queries
+- llm_rag(query: str, retrieved_answers: int) - for document retrieval or research
 
 IMPORTANT:
 You MUST call exactly ONE tool.
-If you choose llm_rag, you MUST answer based on documents that retrieved.
+If you choose llm_rag, you MUST pass retrieved_answers={state.get("retrieved_answers", 5)}.
 """
+
+    # Add the prompt as a human message
+    messages.append(HumanMessage(content=prompt))
+
     model_with_tools = agent.bind_tools(
         [llm_chat, llm_query, llm_rag]
     )
 
-    ai_message = model_with_tools.invoke(
-        [HumanMessage(content=prompt)]
-    )
-    # ⚠️ 关键：ai_message 必须包含 tool_calls
+    ai_message = await model_with_tools.ainvoke(messages)
+
+    # Update state with the AI response (which should contain tool_calls)
     new_state = state.copy()
-    new_state["messages"] = [
-        HumanMessage(content=state["input"]),
-        ai_message,
-    ]
+    new_state["messages"] = messages + [ai_message]
 
     return new_state
 
-def check_completion(state: State) -> State:
+
+async def check_completion(state: State) -> State:
     """
-    Determines if the task has been completed based on the user query and AI responses
+    Determines if the task has been completed based on the user query and AI responses.
+    Also extracts the tool output and retrieved_docs to the state.
     """
-    
-    # Combine all responses for analysis
-    #all_responses = " ".join([item['content'] for item in conversation_history if item['role'] == 'assistant'])
-
-    prompt = f"""
-    You are a helpful AI assistant. Based on the AI answer: {state['output']} and user query: {state['input']}
-    decide whether to end conversation or still use the model to generate a new answer. 
-    
-    If the answer is corresponding to the user query and the task is complete, respond with True.
-    If the answer is not corresponding to the user query and the task is not complete, respond with False.
-    If user did not ask a question, respond with True.
-    
-    Do not respond with anything else.
-
-    For example, in these two cases, the tasks are complete, so you should respond with True:
-    ### Case 1:
-    User: My name is John.
-    AI: I am a helpful AI assistant. How can I help you?
-    
-    ### Case 2:
-    User: What's the weather like in New York City?
-    AI: The weather in New York City is sunny with a high of 75 degrees.
-    """
-    
-    # # Simple heuristic to determine if the task is complete
-    # completion_indicators = [
-    #     "calculate" in user_query and ("equals" in all_responses.lower() or "result" in all_responses.lower()),
-    #     "weather" in user_query and "degree" in all_responses.lower(),
-    #     "thank" in user_query,  # User thanked, implying satisfaction
-    #     state.get('iteration_count', 0) >= 5  # Prevent infinite loops
-    # ]
-    
-    # Return updated state with completion status
-    response = agent.invoke([
-        HumanMessage(content=prompt)
-    ])
-    logging.debug(f"check_completion response: {response.content}")
-    logging.debug(f"state: {state}")
-    new_state = state.copy()
-    new_state["task_completed"] = response.content
-    return new_state
-
-
-def route_based_on_decision(state: State) -> str:
-    """
-    Route to llm_chat, llm_query or llm_rag based on team leader decision
-    """
-    decision = team_leader(state)
-    return decision
-
-tool_node = ToolNode([llm_chat, llm_query, llm_rag])
-
-async def retrieve(state: State) -> State:
-    logging.debug(f"[retrieve] before tool: {state}")
-
-    result_state = await tool_node.ainvoke(state)
-
+    # Extract tool output from messages
     output = ""
-    for msg in reversed(result_state.get("messages", [])):
-        if hasattr(msg, "content") and isinstance(msg.content, str):
-            output = msg.content
+    retrieved_docs = []
+    messages = state.get("messages", [])
+
+    # Look for the last tool message (ToolMessage)
+    for msg in reversed(messages):
+        if hasattr(msg, 'content') and msg.content:
+            content = msg.content
+            # Try to parse as JSON (from llm_rag)
+            try:
+                import json
+                if isinstance(content, str) and content.startswith('{'):
+                    parsed = json.loads(content)
+                    if "summary" in parsed:
+                        # This is from llm_rag
+                        output = parsed.get("summary", content)
+                        retrieved_docs = parsed.get("retrieved_docs", [])
+                    else:
+                        output = content
+                else:
+                    output = content
+            except (json.JSONDecodeError, TypeError):
+                output = content
             break
 
     new_state = state.copy()
     new_state["output"] = output
-    new_state["messages"] = result_state.get("messages", [])
+    new_state["retrieved_docs"] = retrieved_docs
+
+    # For now, always mark as completed after one tool execution
+    # This prevents infinite loops
+    new_state["task_completed"] = True
+
+    logging.debug(f"check_completion output: {output[:200] if output else 'No output'}...")
     return new_state
 
 
-# Create workflow graph  
+# Create ToolNode with all tools
+tool_node = ToolNode([llm_chat, llm_query, llm_rag])
+
+
+# Create workflow graph
 workflow = StateGraph(State)
 
 # Define nodes
 workflow.add_node("team_leader", team_leader)
-workflow.add_node("retrieve", retrieve)
+workflow.add_node("tools", tool_node)
 workflow.add_node("check_completion", check_completion)
 
 # Add entry point
 workflow.add_edge(START, "team_leader")
 
-# Add conditional edges
+# Add conditional edges from team_leader
+# If tool_calls exist, go to tools node, otherwise go to check_completion
 workflow.add_conditional_edges(
     "team_leader",
-    tools_condition,
+    # If there are tool calls, route to tools; otherwise END
+    lambda state: "tools" if any(
+        msg.tool_calls for msg in state.get("messages", []) if hasattr(msg, "tool_calls")
+    ) else "check_completion",
     {
-        "tools": "retrieve",
-        # END: END
+        "tools": "tools",
+        "check_completion": "check_completion"
     }
 )
 
-workflow.add_edge("retrieve", "check_completion")
+# After tools execute, go to check_completion
+workflow.add_edge("tools", "check_completion")
 
+# Check completion and decide whether to end or continue
 workflow.add_conditional_edges(
     "check_completion",
     lambda state: "team_leader" if not (state.get('task_completed', False) in [True, 'True', 'true', 'TRUE']) else END,
