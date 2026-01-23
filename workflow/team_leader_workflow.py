@@ -15,10 +15,9 @@ load_dotenv()
 
 class State(TypedDict):
     input: str  # user query input
-    output: str  # model output answer
-    conversation_history: list  # store all conversation history
+    output: NotRequired[str]  # model output answer (deprecated, extracted from messages)
+    conversation_history: NotRequired[list]  # store all conversation history
     messages: list  # LangChain message history for tool calling
-    task_completed: bool  # flag to check if task is completed
     retrieved_answers: NotRequired[int]  # count of retrieved answers, defaults to 5
     retrieved_docs: NotRequired[list]  # raw retrieved documents with similarity scores
 
@@ -202,49 +201,6 @@ If you choose llm_rag, you MUST pass retrieved_answers={state.get("retrieved_ans
     return new_state
 
 
-async def check_completion(state: State) -> State:
-    """
-    Determines if the task has been completed based on the user query and AI responses.
-    Also extracts the tool output and retrieved_docs to the state.
-    """
-    # Extract tool output from messages
-    output = ""
-    retrieved_docs = []
-    messages = state.get("messages", [])
-
-    # Look for the last tool message (ToolMessage)
-    for msg in reversed(messages):
-        if hasattr(msg, 'content') and msg.content:
-            content = msg.content
-            # Try to parse as JSON (from llm_rag)
-            try:
-                import json
-                if isinstance(content, str) and content.startswith('{'):
-                    parsed = json.loads(content)
-                    if "summary" in parsed:
-                        # This is from llm_rag
-                        output = parsed.get("summary", content)
-                        retrieved_docs = parsed.get("retrieved_docs", [])
-                    else:
-                        output = content
-                else:
-                    output = content
-            except (json.JSONDecodeError, TypeError):
-                output = content
-            break
-
-    new_state = state.copy()
-    new_state["output"] = output
-    new_state["retrieved_docs"] = retrieved_docs
-
-    # For now, always mark as completed after one tool execution
-    # This prevents infinite loops
-    new_state["task_completed"] = True
-
-    logging.debug(f"check_completion output: {output[:200] if output else 'No output'}...")
-    return new_state
-
-
 # Create ToolNode with all tools
 tool_node = ToolNode([llm_chat, llm_query, llm_rag])
 
@@ -255,37 +211,15 @@ workflow = StateGraph(State)
 # Define nodes
 workflow.add_node("team_leader", team_leader)
 workflow.add_node("tools", tool_node)
-workflow.add_node("check_completion", check_completion)
 
 # Add entry point
 workflow.add_edge(START, "team_leader")
 
-# Add conditional edges from team_leader
-# If tool_calls exist, go to tools node, otherwise go to check_completion
-workflow.add_conditional_edges(
-    "team_leader",
-    # If there are tool calls, route to tools; otherwise END
-    lambda state: "tools" if any(
-        msg.tool_calls for msg in state.get("messages", []) if hasattr(msg, "tool_calls")
-    ) else "check_completion",
-    {
-        "tools": "tools",
-        "check_completion": "check_completion"
-    }
-)
+# team_leader always calls a tool (enforced by prompt), so go directly to tools
+workflow.add_edge("team_leader", "tools")
 
-# After tools execute, go to check_completion
-workflow.add_edge("tools", "check_completion")
-
-# Check completion and decide whether to end or continue
-workflow.add_conditional_edges(
-    "check_completion",
-    lambda state: "team_leader" if not (state.get('task_completed', False) in [True, 'True', 'true', 'TRUE']) else END,
-    {
-        "team_leader": "team_leader",
-        END: END
-    }
-)
+# After tools execute, go directly to END
+workflow.add_edge("tools", END)
 
 # Compile the graph (async-compatible)
 graph = workflow.compile()

@@ -83,7 +83,6 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
             "input": question,
             "output": "",
             "conversation_history": [],
-            "task_completed": False,
             "messages": [],
             "retrieved_answers": retrieved_answers,
         }
@@ -92,11 +91,29 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
         # Run the workflow asynchronously
         final_state = await graph.ainvoke(initial_state)
 
-        # Extract the final answer from the workflow result
-        final_answer = final_state.get("output", "未能生成有效回答")
+        # Extract tool output and retrieved docs from messages
+        output = ""
+        retrieved_docs = []
+        for msg in final_state.get("messages", []):
+            if hasattr(msg, 'content') and msg.content:
+                # Parse llm_rag JSON output
+                try:
+                    import json
+                    content = msg.content
+                    if isinstance(content, str) and content.startswith('{'):
+                        parsed = json.loads(content)
+                        if "summary" in parsed:
+                            output = parsed.get("summary", content)
+                            retrieved_docs = parsed.get("retrieved_docs", [])
+                        else:
+                            output = content
+                    else:
+                        output = content
+                except (json.JSONDecodeError, TypeError):
+                    output = content
+                break
 
-        # Extract retrieved documents if available
-        retrieved_docs = final_state.get("retrieved_docs", [])
+        final_answer = output or "未能生成有效回答"
         print(f"Retrieved docs: {retrieved_docs}")
 
         # Build messages_summary with structured document data
@@ -123,7 +140,6 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
             content={
                 "question": question,
                 "answer": final_answer,
-                "task_completed": final_state.get("task_completed"),
                 "retrieved_answers": final_state.get("retrieved_answers"),
                 "messages_summary": messages_summary,
             }
