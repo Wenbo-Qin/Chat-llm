@@ -13,6 +13,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from chunking_service.document_processor import process_documents
 from embedding_service.embedding_processor import embedding
 
+# Global cache for FAISS vector store
+_cached_vector_store: Optional["FAISSVectorStore"] = None
+
 class State(TypedDict):
     conversation_history: list
     input: str
@@ -173,6 +176,45 @@ class FAISSVectorStore:
         return len(self.documents)
 
 
+def get_or_load_faiss(
+    index_path: str = "./vector_stores/faiss_index.bin",
+    metadata_path: str = "./vector_stores/faiss_metadata.pkl"
+) -> Optional[FAISSVectorStore]:
+    """
+    Get cached FAISS vector store or load it if not cached.
+
+    Args:
+        index_path: Path to load the FAISS index from
+        metadata_path: Path to load the metadata from
+
+    Returns:
+        Cached or loaded FAISSVectorStore instance or None if error
+    """
+    global _cached_vector_store
+
+    # Return cached instance if available
+    if _cached_vector_store is not None:
+        return _cached_vector_store
+
+    # Load and cache the vector store
+    try:
+        vector_store = load_faiss(index_path, metadata_path)
+        if vector_store:
+            _cached_vector_store = vector_store
+            logging.info(f"Loaded and cached FAISS vector store with {vector_store.get_document_count()} documents")
+        return vector_store
+    except Exception as e:
+        logging.error(f"Error loading FAISS vector store: {str(e)}")
+        return None
+
+
+def clear_faiss_cache():
+    """Clear the cached FAISS vector store."""
+    global _cached_vector_store
+    _cached_vector_store = None
+    logging.info("FAISS vector store cache cleared")
+
+
 def process_and_save_to_faiss(document_path: str, 
                             index_path: str = "./vector_stores/faiss_index.bin", 
                             metadata_path: str = "./vector_stores/faiss_metadata.pkl") -> bool:
@@ -313,42 +355,43 @@ def search_documents(query: str, index_path: str="./vector_stores/faiss_index.bi
 def search_documents_v2(
     query: str,
     k: int
-) -> str:
+) -> list:
     """
-    Convenience function to search documents in FAISS using a query string.
-    
+    Search documents in FAISS using a query string.
+    Returns structured results with document content and similarity scores.
+
     Args:
         query: Query string to search for
-        index_path: Path to load the FAISS index from
-        metadata_path: Path to load the metadata from
         k: Number of results to return
-        
+
     Returns:
-        List of matching documents with similarity scores
+        List of dicts with 'raw_doc' and 'similarity' keys
     """
     index_path = "./vector_stores/faiss_index.bin"
     metadata_path = "./vector_stores/faiss_metadata.pkl"
     try:
-        # Load vector store
-        vector_store = load_faiss(index_path, metadata_path)
-        logging.debug(vector_store)
+        # Get cached or load vector store
+        vector_store = get_or_load_faiss(index_path, metadata_path)
         if not vector_store:
-            # Return state with an appropriate message instead of []
-            return "无法加载向量存储，请确保向量数据库已正确创建。"
-        
+            return [{"raw_doc": "无法加载向量存储，请确保向量数据库已正确创建。", "similarity": 0.0}]
+
         # Generate embedding for query
         query_embedding = embedding(query)
-        logging.debug(f"query_embedding: {query_embedding}")
         # Perform search
         results = vector_store.search(query_embedding, k=k)
-        results = "\n\n".join([doc['document']['content'] for doc in results])
 
-        return results
+        # Format results as structured data
+        formatted_results = []
+        for result in results:
+            formatted_results.append({
+                "raw_doc": result['document']['content'],
+                "similarity": float(result['similarity_score'])
+            })
+
+        return formatted_results
     except Exception as e:
-        print(f"Error searching documents_v2: {str(e)}")
-        # Return state with error message instead of []
-        results = f"搜索文档时发生错误: {str(e)}"
-        return results
+        logging.error(f"Error searching documents_v2: {str(e)}")
+        return [{"raw_doc": f"搜索文档时发生错误: {str(e)}", "similarity": 0.0}]
     
 # Example usage
 if __name__ == "__main__":
