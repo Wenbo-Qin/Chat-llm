@@ -96,23 +96,24 @@ Additionally, we use langchain to memorize the chat history.
 
 - 为后续数据库存储向量做准备
 - 单独做了一个api，而非在askLLM里套用embedding
+   - 该API已废弃，因为用RAG的技术中已经实现了embedding功能
 
 ### 14. MCP方法与 MCP Server集成
 - 将MCP方法集成至MCP Server中
 
 ### 15. Team leader 搭建
-- 创建team leader，能够根据用户意图选择合适的MCP方法
+- 创建team leader，能够根据用户意图选择合适的方法
+   - 方法包括：llm_chat, llm_rag, llm_query
 
+### 16. 建立RAG检索库，并完成chunking -> embedding -> store
+- 知乎检索20篇文章作为语料库，并chunking, embedding, vector store
+- 用faiss进行vector store
 
-## Todo
+### 17. 在llm_rag中构建子workflow，实现RAG功能
+- 已实现rag_graph，作为workflow graph的子图
+- 在rag_graph中实现了对用户query的embedding和相似度查询
+- 返回文档，交给大模型生成回答
 
-### 14. 在llm_rag中构建子workflow，实现从embedding到生成回答全过程
-### 15. 利用langgraph判断用户是否需要RAG搜索，如果需要，再调用embedding
-
-- 将聊天分为 chat-only和chat + rag。具体路由如何走，暂定由大模型自己判断
-- 需要用到hierarchy机制，需要学习一下
-
-### 16. 创建数据库存储向量
 
 ### 其他后续
 
