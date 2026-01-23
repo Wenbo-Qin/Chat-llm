@@ -66,11 +66,11 @@ async def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好
     })
 
 
-@router.post("/embedding")
-def embedding_text(text: str = "你好"):
-    return JSONResponse(status_code=200, content={
-        "embedding_result": embedding_processor(text)
-    })
+# @router.post("/embedding")
+# def embedding_text(text: str = "你好"):
+#     return JSONResponse(status_code=200, content={
+#         "embedding_result": embedding_processor(text)
+#     })
 
 
 @router.post("/team-leader-task")  # will rename to chat-task
