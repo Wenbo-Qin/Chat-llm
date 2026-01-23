@@ -1,4 +1,4 @@
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, NotRequired
 from langgraph.graph import StateGraph, START, END
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_agent
@@ -7,6 +7,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
+from workflow.rag_workflow import rag_graph
 import os
 import logging
 
@@ -14,11 +15,11 @@ load_dotenv()
 
 class State(TypedDict):
     input: str  # user query input
-    output: str  # model output answer
-    conversation_history: list  # store all conversation history
+    output: NotRequired[str]  # model output answer (deprecated, extracted from messages)
+    conversation_history: NotRequired[list]  # store all conversation history
     messages: list  # LangChain message history for tool calling
-    task_completed: bool  # flag to check if task is completed
-    # iteration_count: int=Field(default=0)  # counter to prevent infinite loops
+    retrieved_answers: NotRequired[int]  # count of retrieved answers, defaults to 5
+    retrieved_docs: NotRequired[list]  # raw retrieved documents with similarity scores
 
 # Global agent instance
 agent = ChatOpenAI(
@@ -27,24 +28,21 @@ agent = ChatOpenAI(
     model="deepseek-chat")
 
 @tool
-async def llm_chat(state: State) -> State:
-    """Create an answer to the user's common chat."""
-    try:
-        result = await agent.ainvoke([HumanMessage(content=state['input'])])
-        logging.debug(result)
-        # result is an AIMessage object, extract the content directly
-        response = result.content if hasattr(result, 'content') else str(result)
-    except Exception as e:
-        logging.error(f"Error in llm_chat: {str(e)}")
-        response = f"An error occurred while processing your request: {str(e)}"
-    
-    # Return the response as part of the state
-    return {"output": response, "input": state["input"], "conversation_history": state.get("conversation_history", [])}
+async def llm_chat(query: str) -> str:
+    """
+    MCP-based tool for common conversations
+    """
+    result = await agent.ainvoke([HumanMessage(content=query)])
+    # ainvoke returns AIMessage directly
+    if isinstance(result, AIMessage):
+        return result.content
+    return "No response"
 
 @tool
-async def llm_query(state: State) -> State:
-    """Create an MCP client that connects to both calculator and weather servers"""
-    # Create an MCP client that connects to both calculator and weather servers
+async def llm_query(query: str) -> str:
+    """
+    MCP-based tool for calculator / weather / general query
+    """
     client = MultiServerMCPClient(
         {
             "calculator_service": {
@@ -61,204 +59,167 @@ async def llm_query(state: State) -> State:
     )
 
     try:
-        # Get the tools from the server
         mcp_tools = await client.get_tools()
 
-        # Create an agent using the create_agent function
-        agent_for_query = create_agent(
-            "deepseek-chat", 
+        agent = create_agent(
+            "deepseek-chat",
             mcp_tools,
             system_prompt=SystemMessage(
-                content=[
-                    {
-                        "type": "text",
-                        "text": f"You are a helpful AI assistant. Answer the user's query: {state['input']}",
-                    }
-                ]
+                content=f"You are a helpful AI assistant. Answer the user's query: {query}"
             )
         )
-        
-        result = await agent_for_query.ainvoke({"messages": [HumanMessage(content=state['input'])]})
-        logging.debug(result)
-        # Handle the result - could be a message object or string
-        if hasattr(result, 'content'):
-            response = result.content
-        elif isinstance(result, dict) and 'output' in result:
-            response = result['output']
-        else:
-            response = str(result)
+
+        result = await agent.ainvoke({
+            "messages": [HumanMessage(content=query)]
+        })
+
+        ai_message = None
+        if "messages" in result:
+            for msg in reversed(result["messages"]):
+                if isinstance(msg, AIMessage):
+                    ai_message = msg
+                    break
+
+        return ai_message.content if ai_message else "No response"
+
     except Exception as e:
-        logging.error(f"Error in llm_query: {str(e)}")
-        response = f"An error occurred while processing your request: {str(e)}"
-    
-    # Return the response as part of the state
-    return {"output": response, "input": state["input"], "conversation_history": state.get("conversation_history", [])}
+        logging.error(f"llm_query error: {e}")
+        return f"Error: {e}"
 
 @tool
-async def llm_rag(state: State) -> State:
-    """RAG tool for answering user queries about mental health."""
+async def llm_rag(
+    query: str,
+    retrieved_answers: int = 5
+) -> str:
+    """
+    RAG tool: Retrieve documents and generate summary based on them.
+    Returns JSON string with summary and retrieved documents.
+    """
     try:
-        result = await agent.ainvoke([HumanMessage(content=state['input'])])
-        logging.debug(result)
-        # result is an AIMessage object, extract the content directly
-        response = result.content if hasattr(result, 'content') else str(result)
+        result = await rag_graph.ainvoke({
+            "input": query,
+            "retrieved_answers": retrieved_answers,
+            "messages": [],
+            "conversation_history": [],
+            "output": "",
+            "task_completed": False,
+        })
+
+        # Extract the summary output and retrieved documents
+        summary = result.get("output", "No summary generated")
+        retrieved_docs = result.get("retrieved_docs", [])
+
+        # Return as JSON string
+        import json
+        return json.dumps({
+            "summary": summary,
+            "retrieved_docs": retrieved_docs
+        }, ensure_ascii=False)
+
     except Exception as e:
-        logging.error(f"Error in llm_rag: {str(e)}")
-        response = f"An error occurred while processing your request: {str(e)}"
+        logging.error(f"llm_rag error: {e}")
+        import json
+        return json.dumps({
+            "summary": f"RAG error: {e}",
+            "retrieved_docs": []
+        }, ensure_ascii=False)
+
+# def team_leader(state: State) -> State:
+#     """
+#     Use agent to understand user intent and decide workflow path by calling appropriate tool
+#     """
+
+#     prompt = f"""
+#     You are a helpful AI assistant. Based on the user's query: {state['input']},
+#     decide whether to use llm_chat for common conversations, llm_query for calculations, weather info,
+#     or llm_rag for document retrieval or research.
+
+#     If the query is about common chat (for example, common greeting ,.etc), call the llm_chat tool.
+#     If the query is related to calculations, math operations, weather information or common conversations, call the llm_query tool.
+#     If it requires document retrieval, research, or detailed information retrieval, call the llm_rag tool.
     
-    # Return the response as part of the state
-    return {"output": response, "input": state["input"], "conversation_history": state.get("conversation_history", [])}
+    
+#     Additionally, if you choose weather realated tool in llm_query, you should translate the query city name into English with lowercase before calling llm_query.
+#     If you call llm_rag, you MUST pass:
+#     - query = the user query
+#     - retrieved_answers = {state.get("retrieved_answers")}
+#     """
+#     logging.debug(f"team_leader state: {state}")
+#     # Bind the tools to the client
+#     model_with_tool = agent.bind_tools([llm_chat, llm_query, llm_rag])
 
-def team_leader(state: State) -> State:
-    """
-    Use agent to understand user intent and decide workflow path by calling appropriate tool
-    """
+#     response = model_with_tool.invoke([
+#         HumanMessage(content=prompt)
+#     ])
 
+#     new_state = state.copy()
+#     new_state["messages"] = [
+#         HumanMessage(content=state["input"]),
+#         response
+#     ]
+
+async def team_leader(state: State) -> State:
+    """Route user query to appropriate tool using LLM."""
+    # Get existing messages or initialize with user input
+    messages = state.get("messages", [])
+
+    # If this is the first call, add the user's message
+    if not messages or len(messages) == 0:
+        messages = [HumanMessage(content=state["input"])]
+
+    # Build the prompt for the router
     prompt = f"""
-    You are a helpful AI assistant. Based on the user's query: {state['input']},
-    decide whether to use llm_chat for common conversations, llm_query for calculations, weather info,
-    or llm_rag for document retrieval or research.
+You are a router agent.
 
-    If the query is about common chat (for example, common greeting ,.etc), call the llm_chat tool.
-    If the query is related to calculations, math operations, weather information or common conversations, call the llm_query tool.
-    If it requires document retrieval, research, or detailed information retrieval, call the llm_rag tool.
-    
-    
-    Additionally, if you choose weather realated tool in llm_query, you should translate the query city name into English with lowercase before calling llm_query.
-    """
-    
-    # Bind the tools to the client
-    model_with_tool = agent.bind_tools([llm_chat, llm_query, llm_rag])
-    logging.debug(f"team_leader input: {state['input']}")
+User query:
+{state['input']}
 
-    # Use the tool-bound model to decide and return a response with tool call
-    response = model_with_tool.invoke([
-        HumanMessage(content=prompt)
-    ])
-    logging.debug(f"team_leader response: {response}")
+Decide which tool to call:
 
-    # Return state with the response containing the tool call
-    state = state.copy()
-    state["messages"] = [HumanMessage(content=state['input']), response]
+- llm_chat(query: str) - for common conversations
+- llm_query(query: str) - for calculations, weather info, general queries
+- llm_rag(query: str, retrieved_answers: int) - for document retrieval or research
 
-    return state
+IMPORTANT:
+You MUST call exactly ONE tool.
+If you choose llm_rag, you MUST pass retrieved_answers={state.get("retrieved_answers", 5)}.
+"""
 
+    # Add the prompt as a human message
+    messages.append(HumanMessage(content=prompt))
 
-def check_completion(state: State) -> State:
-    """
-    Determines if the task has been completed based on the user query and AI responses
-    """
-    
-    # Combine all responses for analysis
-    #all_responses = " ".join([item['content'] for item in conversation_history if item['role'] == 'assistant'])
+    model_with_tools = agent.bind_tools(
+        [llm_chat, llm_query, llm_rag]
+    )
 
-    prompt = f"""
-    You are a helpful AI assistant. Based on the AI answer: {state['output']} and user query: {state['input']}
-    decide whether to end conversation or still use the model to generate a new answer. 
-    
-    If the answer is corresponding to the user query and the task is complete, respond with True.
-    If the answer is not corresponding to the user query and the task is not complete, respond with False.
-    If user did not ask a question, respond with True.
-    
-    Do not respond with anything else.
+    ai_message = await model_with_tools.ainvoke(messages)
 
-    For example, in these two cases, the tasks are complete, so you should respond with True:
-    ### Case 1:
-    User: My name is John.
-    AI: I am a helpful AI assistant. How can I help you?
-    
-    ### Case 2:
-    User: What's the weather like in New York City?
-    AI: The weather in New York City is sunny with a high of 75 degrees.
-    """
-    
-    # # Simple heuristic to determine if the task is complete
-    # completion_indicators = [
-    #     "calculate" in user_query and ("equals" in all_responses.lower() or "result" in all_responses.lower()),
-    #     "weather" in user_query and "degree" in all_responses.lower(),
-    #     "thank" in user_query,  # User thanked, implying satisfaction
-    #     state.get('iteration_count', 0) >= 5  # Prevent infinite loops
-    # ]
-    
-    # Return updated state with completion status
-    response = agent.invoke([
-        HumanMessage(content=prompt)
-    ])
-    logging.debug(f"check_completion response: {response.content}")
-    logging.debug(f"state: {state}")
-    state['task_completed'] = response.content
-    # state['task_completed'] = True # for debug only
-    return state
+    # Update state with the AI response (which should contain tool_calls)
+    new_state = state.copy()
+    new_state["messages"] = messages + [ai_message]
+
+    return new_state
 
 
-def route_based_on_decision(state: State) -> str:
-    """
-    Route to llm_chat, llm_query or llm_rag based on team leader decision
-    """
-    decision = team_leader(state)
-    return decision
-
+# Create ToolNode with all tools
 tool_node = ToolNode([llm_chat, llm_query, llm_rag])
 
-async def retrieve(state: State) -> State:
-    """Execute tool and update state with result"""
-    # Call ToolNode to execute the tool
-    result_state = await tool_node.ainvoke(state)
-    
-    # Extract the tool result from messages
-    messages = result_state.get("messages", [])
-    output = state.get("output", "")
-    
-    # The last message should be ToolMessage with the tool result
-    for msg in reversed(messages):
-        if hasattr(msg, 'content') and isinstance(msg.content, str):
-            output = msg.content
-            break
-    
-    # Update conversation history with the output
-    updated_history = state.get('conversation_history', []).copy()
-    updated_history.append({"role": "assistant", "content": output})
-    
-    # Return updated state
-    return {
-        "input": state["input"],
-        "output": output,
-        "conversation_history": updated_history,
-        "messages": messages,
-        "task_completed": state.get("task_completed", False)
-    }
 
-# Create workflow graph  
+# Create workflow graph
 workflow = StateGraph(State)
 
 # Define nodes
 workflow.add_node("team_leader", team_leader)
-workflow.add_node("retrieve", retrieve)
-workflow.add_node("check_completion", check_completion)
+workflow.add_node("tools", tool_node)
 
 # Add entry point
 workflow.add_edge(START, "team_leader")
 
-# Add conditional edges
-workflow.add_conditional_edges(
-    "team_leader",
-    tools_condition,
-    {
-        "tools": "retrieve",
-        # END: END
-    }
-)
+# team_leader always calls a tool (enforced by prompt), so go directly to tools
+workflow.add_edge("team_leader", "tools")
 
-workflow.add_edge("retrieve", "check_completion")
-
-workflow.add_conditional_edges(
-    "check_completion",
-    lambda state: "team_leader" if not (state.get('task_completed', False) in [True, 'True', 'true', 'TRUE']) else END,
-    {
-        "team_leader": "team_leader",
-        END: END
-    }
-)
+# After tools execute, go directly to END
+workflow.add_edge("tools", END)
 
 # Compile the graph (async-compatible)
 graph = workflow.compile()

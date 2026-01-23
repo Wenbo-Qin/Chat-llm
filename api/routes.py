@@ -5,7 +5,6 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
-from embedding_service import embedding
 from db_service.history_conversations import load_history_conversation
 from db_service.save_conversations import *
 from db_service.db import save_conversation_sql
@@ -26,7 +25,7 @@ def read_root():
 
 
 @router.post("/askLLM")
-def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", session_id: str = None):
+async def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", session_id: str = None):
     # 如果没有 session_id，说明是新会话
     is_new_session = not session_id
     if is_new_session:
@@ -45,8 +44,8 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", ses
     # 配置线程 ID 用于会话记忆
     config = {"configurable": {"thread_id": session_id}}
 
-    # 调用 LangGraph 应用
-    result = langgraph_app.invoke(input_messages, config=config)
+    # 异步调用 LangGraph 应用
+    result = await langgraph_app.ainvoke(input_messages, config=config)
 
     # 提取 AI 回复
     answer_text = ""
@@ -55,7 +54,7 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", ses
             answer_text = message.content
             break
 
-    # 保存对话历史到数据库
+    # 保存对话历史到数据库 (在后台异步执行)
     save_conversation_json(session_id, question, answer_text, model_name)
     save_conversation_sql(session_id, question, answer_text, model_name)
 
@@ -66,77 +65,96 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", ses
     })
 
 
-@router.post("/embedding")
-def embedding_text(text: str = "你好"):
-    return JSONResponse(status_code=200, content={
-        "embedding_result": embedding(text)
-    })
+# @router.post("/embedding")
+# def embedding_text(text: str = "你好"):
+#     return JSONResponse(status_code=200, content={
+#         "embedding_result": embedding_processor(text)
+#     })
 
 
 @router.post("/team-leader-task")  # will rename to chat-task
-async def team_leader_task(question: str):
+async def team_leader_task(question: str, retrieved_answers:int=5):
     """
     API endpoint that invokes the team leader workflow to handle user tasks
     """
     try:
         # Initialize the state for the workflow
         initial_state = {
-            # "current_step": "start",
             "input": question,
             "output": "",
             "conversation_history": [],
-            "task_completed": False,
-            "messages": [],  # Required for LangGraph tools_condition
-            # "iteration_count": 0
+            "messages": [],
+            "retrieved_answers": retrieved_answers,
         }
+        logging.debug(f"Initial state: {initial_state}")
 
         # Run the workflow asynchronously
-        final_state = await graph.ainvoke(initial_state, config={"max_iterations": 2})
+        final_state = await graph.ainvoke(initial_state)
 
-        # Extract the final answer from the workflow result
-        # Try to get the content from the last tool message in messages
-        messages = final_state.get("messages", [])
-        final_answer = "未能生成有效回答"
-        
-        # Look for the last AIMessage with content in the messages
-        for msg in reversed(messages):
+        # Extract tool output and retrieved docs from messages
+        output = ""
+        retrieved_docs = []
+        for msg in final_state.get("messages", []):
             if hasattr(msg, 'content') and msg.content:
+                # Parse llm_rag JSON output
                 try:
-                    # Check if content is a JSON string that needs parsing
                     import json
                     content = msg.content
                     if isinstance(content, str) and content.startswith('{'):
-                        # Parse the JSON string and extract the output
-                        parsed_content = json.loads(content)
-                        final_answer = parsed_content.get('output', content)
+                        parsed = json.loads(content)
+                        if "summary" in parsed:
+                            output = parsed.get("summary", content)
+                            retrieved_docs = parsed.get("retrieved_docs", [])
+                        else:
+                            output = content
                     else:
-                        # Content is already a string
-                        final_answer = content
-                except json.JSONDecodeError:
-                    # If JSON parsing fails, use the content as is
-                    final_answer = msg.content
+                        output = content
+                except (json.JSONDecodeError, TypeError):
+                    output = content
                 break
-        
-        # Extract conversation history for context
-        conversation_history = final_state.get("conversation_history", [])
-        
+
+        final_answer = output or "未能生成有效回答"
+        print(f"Retrieved docs: {retrieved_docs}")
+
+        # Build messages_summary with structured document data
+        messages_summary = []
+        if retrieved_docs:
+            # Format retrieved documents as structured data
+            for doc in retrieved_docs:
+                messages_summary.append({
+                    "content": {
+                        "raw_doc": doc.get("raw_doc", ""),
+                        "similarity": doc.get("similarity", 0.0)
+                    }
+                })
+        else:
+            # If no retrieved docs, include a simple message summary
+            for msg in final_state.get("messages", []):
+                if hasattr(msg, 'content') and msg.content:
+                    messages_summary.append({
+                        "content": str(msg.content)[:500]
+                    })
+
         return JSONResponse(
             status_code=200,
             content={
                 "question": question,
                 "answer": final_answer,
-                # "conversation_history": conversation_history,
-                "task_completed": final_state.get("task_completed", False)
+                "retrieved_answers": final_state.get("retrieved_answers"),
+                "messages_summary": messages_summary,
             }
         )
     except Exception as e:
         logging.error(f"Error in team_leader_task: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(
             status_code=500,
             content={
                 "error": f"处理请求时发生错误: {str(e)}"
             }
         )
+
 
 
 if __name__ == "__main__":
