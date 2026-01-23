@@ -5,7 +5,6 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
-from embedding_service import embedding_processor
 from db_service.history_conversations import load_history_conversation
 from db_service.save_conversations import *
 from db_service.db import save_conversation_sql
@@ -98,6 +97,7 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
 
         # Extract retrieved documents if available
         retrieved_docs = final_state.get("retrieved_docs", [])
+        print(f"Retrieved docs: {retrieved_docs}")
 
         # Build messages_summary with structured document data
         messages_summary = []
