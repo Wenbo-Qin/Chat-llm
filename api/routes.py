@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
-from embedding_service import embedding
+from embedding_service import embedding_processor
 from db_service.history_conversations import load_history_conversation
 from db_service.save_conversations import *
 from db_service.db import save_conversation_sql
@@ -69,12 +69,12 @@ def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好", ses
 @router.post("/embedding")
 def embedding_text(text: str = "你好"):
     return JSONResponse(status_code=200, content={
-        "embedding_result": embedding(text)
+        "embedding_result": embedding_processor(text)
     })
 
 
 @router.post("/team-leader-task")  # will rename to chat-task
-async def team_leader_task(question: str):
+async def team_leader_task(question: str, retrieved_answers:int=5):
     """
     API endpoint that invokes the team leader workflow to handle user tasks
     """
@@ -87,9 +87,10 @@ async def team_leader_task(question: str):
             "conversation_history": [],
             "task_completed": False,
             "messages": [],  # Required for LangGraph tools_condition
+            "retrieved_answers": retrieved_answers,
             # "iteration_count": 0
         }
-
+        logging.debug(f"Initial state: {initial_state}")
         # Run the workflow asynchronously
         final_state = await graph.ainvoke(initial_state, config={"max_iterations": 2})
 
@@ -125,8 +126,9 @@ async def team_leader_task(question: str):
             content={
                 "question": question,
                 "answer": final_answer,
-                # "conversation_history": conversation_history,
-                "task_completed": final_state.get("task_completed", False)
+                "conversation_history": conversation_history,
+                "task_completed": final_state.get("task_completed", False),
+                "retrieved_answers": final_state.get("retrieved_answers"),
             }
         )
     except Exception as e:
@@ -137,6 +139,7 @@ async def team_leader_task(question: str):
                 "error": f"处理请求时发生错误: {str(e)}"
             }
         )
+
 
 
 if __name__ == "__main__":
