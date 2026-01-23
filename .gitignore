@@ -7,3 +7,6 @@ conversations
 chat.db
 database
 __pycache__/
+DS_store
+server.log
+server_output
