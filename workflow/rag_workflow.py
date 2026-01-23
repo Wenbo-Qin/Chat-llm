@@ -17,7 +17,20 @@ class State(TypedDict):
 # def embedding_text(text: str = "你好") -> str:
 #     result = embedding_processor(text)
 #     return result
-def agent_generate_response(state: State) -> State:
+def rag_retrieve_node(state: State) -> State:
+    query = state["input"]
+    k = state.get("retrieved_answers", 5)
+
+    content = search_documents_v2(query, k)
+
+    new_state = state.copy()
+    new_state["output"] = content
+    new_state["messages"] = state.get("messages", []) + [
+        AIMessage(content=content)
+    ]
+    logging.debug(new_state)
+    return new_state
+def rag_generate_node(state: State) -> State:
     # Ensure retrieved_answers has a default value if not present
     retrieved_answers = state.get('retrieved_answers', 5)
     
@@ -34,11 +47,11 @@ def agent_generate_response(state: State) -> State:
     return state_copy
 
 workflow = StateGraph(State)
-workflow.add_node("rag_query", search_documents_v2)
-workflow.add_node("agent_generate_response", agent_generate_response)
+workflow.add_node("rag_retrieve_node", rag_retrieve_node)
+workflow.add_node("rag_generate_node", rag_generate_node)
 
-workflow.add_edge(START, "rag_query")
-workflow.add_edge("rag_query", "agent_generate_response")
-workflow.add_edge("agent_generate_response", END)
+workflow.add_edge(START, "rag_retrieve_node")
+workflow.add_edge("rag_retrieve_node", "rag_generate_node")
+workflow.add_edge("rag_generate_node", END)
 
 rag_graph = workflow.compile()

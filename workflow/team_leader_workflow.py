@@ -163,8 +163,8 @@ Decide which tool to call:
 
 IMPORTANT:
 You MUST call exactly ONE tool.
+If you choose llm_rag, you MUST answer based on document retrieved.
 """
-
     model_with_tools = agent.bind_tools(
         [llm_chat, llm_query, llm_rag]
     )
@@ -172,7 +172,6 @@ You MUST call exactly ONE tool.
     ai_message = model_with_tools.invoke(
         [HumanMessage(content=prompt)]
     )
-
     # ⚠️ 关键：ai_message 必须包含 tool_calls
     new_state = state.copy()
     new_state["messages"] = [
