@@ -126,9 +126,10 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
             content={
                 "question": question,
                 "answer": final_answer,
-                "conversation_history": conversation_history,
-                "task_completed": final_state.get("task_completed", False),
+                "conversation_history": final_state.get("conversation_history"),
+                "task_completed": final_state.get("task_completed"),
                 "retrieved_answers": final_state.get("retrieved_answers"),
+                "messages": final_state.get("messages"),
             }
         )
     except Exception as e:
