@@ -310,7 +310,10 @@ def search_documents(query: str, index_path: str="./vector_stores/faiss_index.bi
         print(f"Error searching documents: {str(e)}")
         return []
 
-def search_documents_v2(state: State) -> State:
+def search_documents_v2(
+    query: str,
+    k: int
+) -> str:
     """
     Convenience function to search documents in FAISS using a query string.
     
@@ -325,34 +328,27 @@ def search_documents_v2(state: State) -> State:
     """
     index_path = "./vector_stores/faiss_index.bin"
     metadata_path = "./vector_stores/faiss_metadata.pkl"
-    logging.debug(state)
     try:
         # Load vector store
         vector_store = load_faiss(index_path, metadata_path)
         logging.debug(vector_store)
         if not vector_store:
             # Return state with an appropriate message instead of []
-            state_copy = state.copy()
-            state_copy['output'] = "无法加载向量存储，请确保向量数据库已正确创建。"
-            return state_copy
+            return "无法加载向量存储，请确保向量数据库已正确创建。"
         
         # Generate embedding for query
-        query_embedding = embedding(state['input'])
+        query_embedding = embedding(query)
         logging.debug(f"query_embedding: {query_embedding}")
-        logging.debug(f"retrieved_answers: {state['retrieved_answers']}")
         # Perform search
-        results = vector_store.search(query_embedding, k=state['retrieved_answers'])
+        results = vector_store.search(query_embedding, k=k)
         results = "\n\n".join([doc['document']['content'] for doc in results])
-        state['output'] = results
-        state['messages'] = results
 
-        return state
+        return results
     except Exception as e:
         print(f"Error searching documents_v2: {str(e)}")
         # Return state with error message instead of []
-        state_copy = state.copy()
-        state_copy['output'] = f"搜索文档时发生错误: {str(e)}"
-        return state_copy
+        results = f"搜索文档时发生错误: {str(e)}"
+        return results
     
 # Example usage
 if __name__ == "__main__":
