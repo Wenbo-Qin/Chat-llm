@@ -344,6 +344,7 @@ def search_documents_v2(state: State) -> State:
         results = vector_store.search(query_embedding, k=state['retrieved_answers'])
         results = "\n\n".join([doc['document']['content'] for doc in results])
         state['output'] = results
+        state['messages'] = results
 
         return state
     except Exception as e:
@@ -370,7 +371,7 @@ if __name__ == "__main__":
             query="为什么会有童年阴影",
             index_path="./vector_stores/faiss_index.bin",
             metadata_path="./vector_stores/faiss_metadata.pkl",
-            k=3
+            k=5
         )
         
         print(f"Found {len(results)} results:")
