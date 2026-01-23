@@ -53,7 +53,7 @@ def load_zhihu_documents(directory: str) -> list:
     print(f"Loaded {len(documents)} documents")
     return documents
 
-def split_into_chunks(text: str, max_chars: int = 60, overlap_ratio: float = 0.1) -> list:
+def split_into_chunks(text: str, max_chars: int = 500, overlap_ratio: float = 0.3) -> list:
     """
     Split text into semantically meaningful chunks with overlap.
     
