@@ -163,7 +163,7 @@ Decide which tool to call:
 
 IMPORTANT:
 You MUST call exactly ONE tool.
-If you choose llm_rag, you MUST answer based on document retrieved.
+If you choose llm_rag, you MUST answer based on documents that retrieved.
 """
     model_with_tools = agent.bind_tools(
         [llm_chat, llm_query, llm_rag]

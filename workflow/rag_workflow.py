@@ -12,6 +12,7 @@ class State(TypedDict):
     messages: list
     output: str
     task_completed: bool
+    conversation_history: list  # store all conversation history
     retrieved_answers: NotRequired[int]  # count of retrieved answers, defaults to 5
 
 # def embedding_text(text: str = "你好") -> str:
@@ -25,14 +26,12 @@ def rag_retrieve_node(state: State) -> State:
 
     new_state = state.copy()
     new_state["output"] = content
-    new_state["messages"] = state.get("messages", []) + [
-        AIMessage(content=content)
-    ]
+    new_state["conversation_history"] = content
     logging.debug(new_state)
     return new_state
 def rag_generate_node(state: State) -> State:
     # Ensure retrieved_answers has a default value if not present
-    retrieved_answers = state.get('retrieved_answers', 5)
+    retrieved_answers = state.get('retrieved_answers')
     
     logging.debug(state)
     agent = ChatOpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), 
@@ -41,9 +40,8 @@ def rag_generate_node(state: State) -> State:
     response = agent.invoke([HumanMessage(content=state['output'])])
     logging.debug(f"agent response: {response}")
     state_copy = state.copy()
+    state_copy['conversation_history'] = state.get('conversation_history')
     state_copy['output'] = response.content
-    state_copy['retrieved_answers'] = retrieved_answers  # preserve the value
-    
     return state_copy
 
 workflow = StateGraph(State)
