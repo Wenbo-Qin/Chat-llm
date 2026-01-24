@@ -12,6 +12,7 @@ from chat_langchain import app as langgraph_app
 import uuid
 import asyncio
 from workflow.team_leader_workflow import graph
+from workflow.react_workflow import react_graph, run_react
 from typing import Dict, Any
 
 app = FastAPI(title="RAG Q&A Backend (dev)")
@@ -155,6 +156,127 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
             }
         )
 
+
+
+@router.post("/react-ask")
+async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: int = 5, session_id: str = None):
+    """
+    ReAct Agent API endpoint that uses reasoning-acting loop to handle user queries.
+
+    The ReAct agent will:
+    1. THOUGHT: Analyze the user's request
+    2. ACTION: Call appropriate tools (llm_chat, llm_query, llm_rag)
+    3. OBSERVATION: Review tool results
+    4. ITERATE: Continue until satisfied or max_iterations reached
+
+    Args:
+        question: User's query or request
+        max_iterations: Maximum number of ReAct iterations (default: 10)
+        session_id: Optional session ID for conversation tracking
+
+    Returns:
+        JSON response with:
+            - question: Original question
+            - answer: Final answer from the agent
+            - iteration_count: Number of iterations performed
+            - tool_calls_summary: Summary of tools used
+            - messages_count: Total messages in conversation
+            - session_id: Session identifier
+    """
+    try:
+        # Generate session_id if not provided
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        logging.info(f"ReAct request - Session: {session_id}, Question: {question[:50]}...")
+
+        # Run the ReAct workflow
+        result = await run_react(question, max_iterations=max_iterations, retrieved_answers=retrieved_answers)
+
+        # Check if successful
+        if not result.get("success"):
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": result.get("error", "Unknown error"),
+                    "question": question,
+                    "session_id": session_id
+                }
+            )
+
+        # Extract messages and find the final answer
+        messages = result.get("messages", [])
+        answer = ""
+
+        # Find the last AI message as the final answer
+        for msg in reversed(messages):
+            if isinstance(msg, AIMessage):
+                if not (hasattr(msg, 'tool_calls') and msg.tool_calls):
+                    # This is the final answer (no tool calls)
+                    answer = msg.content
+                break
+
+        # If no answer found, try to get from result output
+        if not answer:
+            answer = result.get("output", "")
+
+        # Build messages_summary with retrieved documents (same format as team-leader-task)
+        retrieved_docs = result.get("retrieved_docs", [])
+        messages_summary = []
+
+        if retrieved_docs:
+            # Format retrieved documents as structured data
+            for doc in retrieved_docs:
+                messages_summary.append({
+                    "content": {
+                        "raw_doc": doc.get("raw_doc", ""),
+                        "similarity": doc.get("similarity", 0.0)
+                    }
+                })
+        else:
+            # If no retrieved docs, include conversation summary
+            for msg in messages:
+                if isinstance(msg, AIMessage) and not (hasattr(msg, 'tool_calls') and msg.tool_calls):
+                    messages_summary.append({
+                        "content": str(msg.content)[:500]
+                    })
+                    break
+
+        # Get retrieved_answers count and iteration_count
+        retrieved_count = result.get("retrieved_answers", retrieved_answers)
+        iteration_count = result.get("iteration_count", 0)
+
+        # Save conversation to database
+        save_conversation_json(session_id, question, answer, "react-agent")
+        save_conversation_sql(session_id, question, answer, "react-agent")
+
+        logging.info(f"ReAct completed - Session: {session_id}, Iterations: {iteration_count}")
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "question": question,
+                "answer": answer,
+                "retrieved_answers": retrieved_count,
+                "messages_summary": messages_summary,
+                "iteration_count": iteration_count,
+                "session_id": session_id
+            }
+        )
+
+    except Exception as e:
+        logging.error(f"Error in react_ask: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": f"处理请求时发生错误: {str(e)}",
+                "question": question,
+                "session_id": session_id
+            }
+        )
 
 
 if __name__ == "__main__":

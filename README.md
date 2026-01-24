@@ -114,6 +114,10 @@ Additionally, we use langchain to memorize the chat history.
 - 在rag_graph中实现了对用户query的embedding和相似度查询
 - 返回文档，交给大模型生成回答
 
+### 18. 加入ReAct框架，可以代替team_leader
+- 详见API /react-ask
+- RAG仍采用graph的形式
+
 
 ### 其他后续
 
