@@ -469,7 +469,7 @@ if __name__ == "__main__":
         test_queries = [
             "你好",  # Simple greeting - should respond directly
             "帮我计算 125 * 37",  # Calculation - should use llm_query
-            "童年阴影是什么？",  # Knowledge retrieval - should use llm_rag
+            "从众心理如何产生的？",  # Knowledge retrieval - should use llm_rag
             "今天北京的天气怎么样？",  # Weather - should use llm_query
         ]
 
