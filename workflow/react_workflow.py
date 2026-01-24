@@ -467,8 +467,8 @@ if __name__ == "__main__":
         """Test the ReAct workflow with various queries."""
 
         test_queries = [
-            "你好",  # Simple greeting - should respond directly
-            "帮我计算 125 * 37",  # Calculation - should use llm_query
+            "你好",  # Simple greeting - should use llm_chat
+            "帮我计算 125 + 37的结果再乘以5",  # Calculation - should use llm_query
             "从众心理如何产生的？",  # Knowledge retrieval - should use llm_rag
             "今天北京的天气怎么样？",  # Weather - should use llm_query
         ]
