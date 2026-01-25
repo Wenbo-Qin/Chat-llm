@@ -33,6 +33,9 @@ from dotenv import load_dotenv
 # Import existing tools
 from workflow.team_leader_workflow import llm_chat, llm_query, llm_rag
 
+# Import history loading
+from db_service.history_conversations import load_history_conversation
+
 load_dotenv()
 
 # Configure logging
@@ -88,39 +91,47 @@ def create_react_system_prompt() -> str:
     Returns:
         System prompt that instructs the LLM to follow ReAct pattern
     """
-    return """You are an intelligent AI agent that follows the ReAct (Reasoning + Acting) pattern.
+    return """You are an intelligent AI assistant that helps users with their questions.
 
-## Your Thinking Process:
+## Your Internal Thinking Process (do not include in your response):
 
-1. **THOUGHT**: Analyze the user's request and the current situation
-2. **ACTION**: Decide what to do:
+1. Analyze the user's request and the current situation
+2. Decide what to do:
    - If you need more information → call a tool
    - If you have enough information → provide a final answer
-3. **OBSERVATION**: After a tool is executed, review the result
-4. **ITERATE**: If needed, perform another action; otherwise, answer
+3. After a tool is executed, review the result
+4. If needed, perform another action; otherwise, answer
 
 ## Available Tools:
 
 - **llm_chat(query: str)**: Use for general conversations, greetings, casual chat
 - **llm_query(query: str)**: Use for calculations, weather information, or general factual queries
-- **llm_rag(query: str, retrieved_answers: int)**: Use for document retrieval, research, or when you need information from your knowledge base
+- **llm_rag(query: str, retrieved_answers: int)**: Use for document retrieval, research, or when you need information from your knowledge base (only when user asks questions about Psychology topics)
 
 ## Guidelines:
 
-1. **Think step by step**: Before taking any action, explain your reasoning
-2. **Be specific**: When calling tools, provide clear and specific queries
-3. **Use tools efficiently**: Don't call tools if you can answer from your knowledge
-4. **Iterate if needed**: If the first tool call doesn't give you enough information, try another approach
-5. **Provide clear answers**: When you have enough information, give a comprehensive and structured answer
+1. Think step by step internally before taking action
+2. Be specific when calling tools - provide clear and specific queries
+3. Use tools efficiently - don't call tools if you can answer from your knowledge
+4. Iterate if needed - if the first tool call doesn't give you enough information, try another approach
+5. Provide clear, natural, and conversational answers to users
+
+## CRITICAL - Response Format:
+
+- DO NOT include "THOUGHT:", "ANSWER:", "ACTION:", or "OBSERVATION:" labels in your responses
+- DO NOT show your internal reasoning process to users
+- When providing your final answer, respond naturally as if you're having a conversation
+- Your responses should be clean, user-friendly text without structured tags or labels
+- Users should see only your final answer, not your thinking process
 
 ## Important:
 
 - You MUST call exactly ONE tool at a time
 - If you call llm_rag, the default retrieved_answers is 5
 - After each tool execution, evaluate if you need more actions
-- When you're ready to answer, provide the final response WITHOUT calling another tool
+- When you're ready to answer, provide the final response naturally WITHOUT calling another tool
 
-Let's think through this step by step."""
+Remember: Keep your responses conversational and professional. Users should not see any internal reasoning labels."""
 
 
 async def react_agent_node(state: ReActState) -> ReActState:
@@ -408,7 +419,7 @@ react_graph = create_react_graph(max_iterations=10)
 
 
 # Helper function to run ReAct workflow
-async def run_react(input_message: str, max_iterations: int = 10, retrieved_answers: int = 5) -> dict:
+async def run_react(input_message: str, max_iterations: int = 10, retrieved_answers: int = 5, session_id: str = None) -> dict:
     """
     Run the ReAct workflow with a user input.
 
@@ -416,6 +427,7 @@ async def run_react(input_message: str, max_iterations: int = 10, retrieved_answ
         input_message: User's query or request
         max_iterations: Maximum number of ReAct iterations
         retrieved_answers: Number of documents to retrieve when using RAG
+        session_id: Optional session ID for loading conversation history
 
     Returns:
         Dictionary containing:
@@ -425,8 +437,15 @@ async def run_react(input_message: str, max_iterations: int = 10, retrieved_answ
             - retrieved_docs: Retrieved documents with similarity scores
             - retrieved_answers: Count of retrieved answers
     """
+    # Load conversation history if session_id is provided
+    if session_id:
+        messages = load_history_conversation(input_message, session_id)
+        logger.info(f"Loaded {len(messages) - 1} historical messages for session {session_id}")
+    else:
+        messages = [HumanMessage(content=input_message)]
+
     initial_state: ReActState = {
-        "messages": [HumanMessage(content=input_message)],
+        "messages": messages,
         "input": input_message,
         "max_iterations": max_iterations,
         "iteration_count": 0,
