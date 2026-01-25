@@ -118,6 +118,9 @@ Additionally, we use langchain to memorize the chat history.
 - 详见API /react-ask
 - RAG仍采用graph的形式
 
+### 19. ReAct框架加入session_id记忆机制
+
+### 20. 
 
 ### 其他后续
 
