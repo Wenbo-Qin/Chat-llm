@@ -28,10 +28,10 @@ Additionally, we use langchain to memorize the chat history.
    Run main.py directly
    ``
 3. How to use chunking, embedding, vector store
-   Due to long time waiting for chunking, we highly recommend you to chunking before using rag.
-   a. run faiss_store.py
-      It will chunking, embedding data and store vectors in faiss
-   b. waiting patiently for chunking 
+   Due to long time waiting for chunking, we highly recommend you to chunking before using rag.  
+   - run faiss_store.py  
+      - It will chunking, embedding data and store vectors in faiss  
+   - waiting patiently for chunking  
 
 4. Open website of Chat with the robot
    - local  
