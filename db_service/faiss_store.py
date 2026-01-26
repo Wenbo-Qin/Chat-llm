@@ -384,8 +384,17 @@ def search_documents_v2(
         # Format results as structured data
         formatted_results = []
         for result in results:
+            # Extract content from Document object if needed
+            content = result['document']['content']
+            if hasattr(content, 'page_content'):
+                content = content.page_content
+            elif isinstance(content, dict):
+                content = str(content)
+            else:
+                content = str(content)
+
             formatted_results.append({
-                "raw_doc": result['document']['content'],
+                "raw_doc": content,
                 "similarity": float(result['similarity_score'])
             })
 
