@@ -35,7 +35,7 @@ Additionally, we use langchain to memorize the chat history.
 
 4. Open website of Chat with the robot
    - local  
-      http://localhost:8000/docs
+      [click here](http://localhost:8000/docs)
    - dev
    - uat
 ---
