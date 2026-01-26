@@ -1,8 +1,16 @@
+import logging
 import os
+import sys
 from pathlib import Path
 import re
 from datetime import datetime
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+# Add project root to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from embedding_service.embedding_processor import embedding
 def load_zhihu_documents(directory: str) -> list:
     """
     Load all Zhihu answer TXT files from the specified directory.
@@ -121,6 +129,16 @@ def split_into_chunks(text: str, max_chars: int = 500, overlap_ratio: float = 0.
     
     return final_chunks
 
+def split_into_chunks_v2(text: str, max_chars: int = 500, overlap_ratio: float = 0.3) -> list:
+    text_splitter = RecursiveCharacterTextSplitter(
+        separators = ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""],
+        chunk_size=46,
+        chunk_overlap=10,
+        length_function=len,
+        is_separator_regex=False,
+    )
+    return text_splitter.create_documents([text])
+    
 def process_documents(directory: str) -> list:
     """
     Process all documents in directory: load and chunk them.
@@ -148,8 +166,27 @@ def process_documents(directory: str) -> list:
     print(f"Processed {len(processed)} chunks from {len(documents)} documents\n")
     return processed
 
+def process_documents_v2(directory: str) -> list:
+    documents = load_zhihu_documents(directory)
+    processed = []
+    for doc in documents:
+        chunks = split_into_chunks_v2(doc['content'])
+        logging.debug(chunks)
+        for i, chunk in enumerate(chunks):
+            processed.append({
+                'doc_id': f"{doc['id']}_chunk_{i}",
+                'content': chunk,
+                'source': doc['source'],
+                'original_id': doc['id'],
+                'chunk_index': i,
+            })
+    print(f"Processed {len(processed)} chunks from {len(documents)} documents\n")
+    print(type(processed))
+    return processed
+
 # Example usage
 if __name__ == "__main__":
-    processed_docs = process_documents("./docs/test.txt") # test.txt is a sample file for testing
+    processed_docs = process_documents_v2("./docs/real_docs") # test.txt is a sample file for testing
+    # processed_docs = process_documents_v2("./docs/test.txt") # test.txt is a sample file for testing
     print(f"Total chunks created: {len(processed_docs)}")
-    print(processed_docs)  # Print first chunk for verification
+    # print(processed_docs)  # Print first chunk for verification
