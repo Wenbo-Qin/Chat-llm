@@ -191,7 +191,7 @@ async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: 
         logging.info(f"ReAct request - Session: {session_id}, Question: {question[:50]}...")
 
         # Run the ReAct workflow
-        result = await run_react(question, max_iterations=max_iterations, retrieved_answers=retrieved_answers)
+        result = await run_react(question, max_iterations=max_iterations, retrieved_answers=retrieved_answers, session_id=session_id)
 
         # Check if successful
         if not result.get("success"):

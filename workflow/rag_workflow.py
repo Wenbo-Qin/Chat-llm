@@ -39,7 +39,7 @@ async def rag_retrieve_node(state: State) -> State:
 
     # Retrieve documents with similarity scores
     retrieved_docs = search_documents_v2(query, k)
-
+    logging.debug(f"retrieved_docs: {retrieved_docs}")
     # Build context from retrieved documents
     context_parts = []
     for i, doc in enumerate(retrieved_docs, 1):

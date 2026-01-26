@@ -10,7 +10,7 @@ import os
 # Add project root to path to import from other modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from chunking_service.document_processor import process_documents
+from chunking_service.document_processor import process_documents, process_documents_v2
 from embedding_service.embedding_processor import embedding
 
 # Global cache for FAISS vector store
@@ -233,7 +233,7 @@ def process_and_save_to_faiss(document_path: str,
     try:
         # Step 1: Process documents using document_processor
         print("Step 1: Processing documents...")
-        chunks = process_documents(document_path)
+        chunks = process_documents_v2(document_path)
         # print(f"Processed {len(chunks)} document chunks.\n")
         
         if not chunks:
@@ -245,7 +245,8 @@ def process_and_save_to_faiss(document_path: str,
         embeddings = []
         for i, chunk in enumerate(chunks):
             print(f"Processing chunk {i+1}/{len(chunks)}")
-            emb = embedding(chunk['content'])  # Use your embedding function
+            text_content = chunk['content'].page_content if hasattr(chunk['content'], 'page_content') else chunk['content']
+            emb = embedding(text_content)  # Use your embedding function
             embeddings.append(emb)
         
         # Step 3: Create vector store and add embeddings
@@ -383,8 +384,17 @@ def search_documents_v2(
         # Format results as structured data
         formatted_results = []
         for result in results:
+            # Extract content from Document object if needed
+            content = result['document']['content']
+            if hasattr(content, 'page_content'):
+                content = content.page_content
+            elif isinstance(content, dict):
+                content = str(content)
+            else:
+                content = str(content)
+
             formatted_results.append({
-                "raw_doc": result['document']['content'],
+                "raw_doc": content,
                 "similarity": float(result['similarity_score'])
             })
 
@@ -397,7 +407,7 @@ def search_documents_v2(
 if __name__ == "__main__":
     # Process documents and save to FAISS
     success = process_and_save_to_faiss(
-        document_path="./docs",  # Path to your documents
+        document_path="./docs/real_docs",  # Path to your documents
         index_path="./vector_stores/faiss_index.bin",
         metadata_path="./vector_stores/faiss_metadata.pkl"
     )
@@ -407,7 +417,7 @@ if __name__ == "__main__":
         
         # Example of searching
         results = search_documents(
-            query="为什么会有童年阴影",
+            query="从众心理如何产生？",
             index_path="./vector_stores/faiss_index.bin",
             metadata_path="./vector_stores/faiss_metadata.pkl",
             k=5
@@ -415,6 +425,6 @@ if __name__ == "__main__":
         
         print(f"Found {len(results)} results:")
         for i, result in enumerate(results):
-            print(f"Result {i+1}: Score={result['similarity_score']:.4f}, Content='{result['document']['content'][:100]}...'")
+            print(f"Result {i+1}: Score={result['similarity_score']:.4f}, Content='{result['document']['content'][:10]}...'")
     else:
         print("Failed to process documents.")

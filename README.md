@@ -27,12 +27,19 @@ Additionally, we use langchain to memorize the chat history.
    ``
    Run main.py directly
    ``
-3. Open website of Chat with the robot
+3. How to use chunking, embedding, vector store
+   Due to long time waiting for chunking, we highly recommend you to chunking before using rag.
+   a. run faiss_store.py
+      It will chunking, embedding data and store vectors in faiss
+   b. waiting patiently for chunking 
+
+4. Open website of Chat with the robot
    - local  
       http://localhost:8000/docs
    - dev
    - uat
 ---
+
 ## 项目进展
 注：由于本人对开发和大模型并不熟悉，无法做到一下做完，只能先实现「最小模型」，在此基础上进行迭代更新。因此，项目进展并不快。项目进展按日进行记录
 
@@ -118,6 +125,12 @@ Additionally, we use langchain to memorize the chat history.
 - 详见API /react-ask
 - RAG仍采用graph的形式
 
+### 19. ReAct框架加入session_id记忆机制
+- 同时如果输入了session_id，则会调用load_history_conversation加载历史聊天记录
+   - **注意：该历史聊天记录可能是原始文件，后续需要优化**
+
+### 20. 使用RecursiveCharacterTextSplitter而非定长chunking
+- chunking结果更加整洁
 
 ### 其他后续
 
