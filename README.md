@@ -126,8 +126,11 @@ Additionally, we use langchain to memorize the chat history.
 - RAG仍采用graph的形式
 
 ### 19. ReAct框架加入session_id记忆机制
+- 同时如果输入了session_id，则会调用load_history_conversation加载历史聊天记录
+   - **注意：该历史聊天记录可能是原始文件，后续需要优化**
 
-### 20. 
+### 20. 使用RecursiveCharacterTextSplitter而非定长chunking
+- chunking结果更加整洁
 
 ### 其他后续
 
