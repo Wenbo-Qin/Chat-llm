@@ -132,8 +132,12 @@ Additionally, we use langchain to memorize the chat history.
 ### 20. 使用RecursiveCharacterTextSplitter而非定长chunking
 - chunking结果更加整洁
 
-### 其他后续
+### 21. 采用OCR技术对pdf文档进行识别与chunking
+- MinerU技术（[详情点击此处](https://mineru.net/apiManage/docs)）
+- pdf文件较大，因此不上传了
 
+### 其他后续
+- 重排序机制设计
 - 融入Springboot服务
 - 加入agent以及agent到hierarchy机制
 - 设计更加精细化的后端
