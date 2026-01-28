@@ -10,7 +10,7 @@ import os
 # Add project root to path to import from other modules
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from chunking_service.document_processor import process_documents, process_documents_v2
+from chunking_service.document_processor import process_documents, process_documents_v2, process_documents_pdf
 from embedding_service.embedding_processor import embedding
 
 # Global cache for FAISS vector store
@@ -217,7 +217,8 @@ def clear_faiss_cache():
 
 def process_and_save_to_faiss(document_path: str, 
                             index_path: str = "./vector_stores/faiss_index.bin", 
-                            metadata_path: str = "./vector_stores/faiss_metadata.pkl") -> bool:
+                            metadata_path: str = "./vector_stores/faiss_metadata.pkl",
+                            type:str = 'txt') -> bool:
     """
     Process documents using document_processor, generate embeddings using embedding_processor,
     and save to FAISS vector store.
@@ -233,7 +234,10 @@ def process_and_save_to_faiss(document_path: str,
     try:
         # Step 1: Process documents using document_processor
         print("Step 1: Processing documents...")
-        chunks = process_documents_v2(document_path)
+        if type == 'txt':
+            chunks = process_documents_v2(document_path)
+        elif type == 'pdf':
+            chunks = process_documents_pdf(document_path)
         # print(f"Processed {len(chunks)} document chunks.\n")
         
         if not chunks:
@@ -407,9 +411,10 @@ def search_documents_v2(
 if __name__ == "__main__":
     # Process documents and save to FAISS
     success = process_and_save_to_faiss(
-        document_path="./docs/real_docs",  # Path to your documents
+        document_path="./docs/pdf_docs",  # Path to your documents
         index_path="./vector_stores/faiss_index.bin",
-        metadata_path="./vector_stores/faiss_metadata.pkl"
+        metadata_path="./vector_stores/faiss_metadata.pkl",
+        type="pdf"
     )
     
     if success:
@@ -417,7 +422,7 @@ if __name__ == "__main__":
         
         # Example of searching
         results = search_documents(
-            query="从众心理如何产生？",
+            query="乌合之众具体指的是什么，如何产生的？",
             index_path="./vector_stores/faiss_index.bin",
             metadata_path="./vector_stores/faiss_metadata.pkl",
             k=5
