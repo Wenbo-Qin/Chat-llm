@@ -333,7 +333,7 @@ def process_documents_pdf(directory: str) -> list:
                                 elif state == "failed":
                                     print(f"  Split {split_idx + 1} failed: {extract_result.get('err_msg')}")
                                     break
-                                elif state in ["pending", "running", "waiting-file"]:
+                                elif state in ["pending", "running", "waiting-file", "converting"]:
                                     progress = extract_result.get("extract_progress", {})
                                     if progress:
                                         print(f"  Split {split_idx + 1}: {state} ({progress.get('extracted_pages', 0)}/{progress.get('total_pages', '?')} pages)")
