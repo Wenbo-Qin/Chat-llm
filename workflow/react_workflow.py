@@ -96,14 +96,17 @@ def get_react_agent():
     return _react_agent
 
 
-def create_react_system_prompt() -> str:
+def create_react_system_prompt(retrieved_answers: int = 5) -> str:
     """
     Create the system prompt for the ReAct agent.
+
+    Args:
+        retrieved_answers: Number of documents to retrieve when using RAG
 
     Returns:
         System prompt that instructs the LLM to follow ReAct pattern
     """
-    return """You are an intelligent AI assistant that helps users with their questions.
+    return f"""You are an intelligent AI assistant that helps users with their questions.
 
 ## Your Internal Thinking Process (do not include in your response):
 
@@ -117,15 +120,15 @@ def create_react_system_prompt() -> str:
 ## Available Tools:
 
 - **llm_chat(query: str)**: Use for general conversations, greetings, casual chat
-- **llm_query(query: str)**: Use for calculations, weather information, or general factual queries
-- **llm_rag(query: str, retrieved_answers: int)**: If and only if user ask Psychology realted question, Use it for document retrieval, research. If you use llm_rag, you are not alloed to use other tools.
+- **llm_query(query: str)**: Use for math calculations, weather information, or general factual queries
+- **llm_rag(query: str, retrieved_answers: int)**: If and only if user ask Psychology, camera related question, Use it for document retrieval, research. If you use llm_rag, you are not allowed to use other tools.
 
 ## Guidelines:
 
 1. Think step by step internally before taking action
 2. Be specific when calling tools - provide clear and specific queries
 3. Use tools efficiently - don't call tools if you can answer from your knowledge
-4. Iterate if needed - if the first tool call doesn't give you enough information, try another approach
+4. Iterate if needed - if the first tool call doesn't give you enough information, try another app
 5. Provide clear, natural, and conversational answers to users
 
 ## CRITICAL - Response Format:
@@ -139,7 +142,7 @@ def create_react_system_prompt() -> str:
 ## Important:
 
 - You MUST call exactly ONE tool at a time
-- If you call llm_rag, the default retrieved_answers is 5
+- If you call llm_rag, you MUST use retrieved_answers={retrieved_answers}
 - After each tool execution, evaluate if you need more actions
 - When you're ready to answer, provide the final response naturally WITHOUT calling another tool
 
@@ -164,6 +167,7 @@ async def react_agent_node(state: ReActState) -> ReActState:
     messages = state["messages"]
     iteration_count = state.get("iteration_count", 0)
     max_iterations = state.get("max_iterations", 10)
+    retrieved_answers = state.get("retrieved_answers", 5)
 
     # Check iteration limit to prevent infinite loops
     if iteration_count >= max_iterations:
@@ -171,8 +175,8 @@ async def react_agent_node(state: ReActState) -> ReActState:
 
         # Generate final answer based on all previous tool results
         final_prompt = """Based on all the information gathered from tool calls in this conversation,
-please provide a comprehensive final answer to the user's original question.
-Summarize all findings and give a clear, structured response."""
+        please provide a comprehensive final answer to the user's original question.
+        Summarize all findings and give a clear, structured response."""
 
         final_messages = messages + [HumanMessage(content=final_prompt)]
         response = await get_react_agent().ainvoke(final_messages)
@@ -190,7 +194,7 @@ Summarize all findings and give a clear, structured response."""
         # Check if system prompt already exists
         has_system = any(isinstance(msg, SystemMessage) for msg in messages)
         if not has_system:
-            system_msg = SystemMessage(content=create_react_system_prompt())
+            system_msg = SystemMessage(content=create_react_system_prompt(retrieved_answers=retrieved_answers))
             messages_with_system = [system_msg] + messages
         else:
             messages_with_system = messages
@@ -198,7 +202,7 @@ Summarize all findings and give a clear, structured response."""
         # On subsequent iterations, use messages as-is (they already have the full history)
         messages_with_system = messages
 
-    # Call the LLM to get reasoning and action decision
+    # Call the LLM to get reasoning and action decisionroach
     try:
         # Bind tools to the agent so it can call them
         agent_with_tools = get_react_agent().bind_tools([llm_chat, llm_query, llm_rag])
@@ -206,7 +210,7 @@ Summarize all findings and give a clear, structured response."""
         response = await agent_with_tools.ainvoke(messages_with_system)
 
         new_state = state.copy()
-        new_state["messages"] = messages + [response]
+        new_state["messages"] = messages_with_system + [response]
         new_state["iteration_count"] = iteration_count + 1
 
         # Log the reasoning (if present in response content)
@@ -398,7 +402,7 @@ def create_react_graph(max_iterations: int = 10):
     """
     # Create the workflow graph
     workflow = StateGraph(ReActState)
-
+    logging.debug(workflow.state_schema)
     # Add nodes
     workflow.add_node("agent", react_agent_node)
     workflow.add_node("tools", custom_tool_node)  # Use custom tool node instead of ToolNode
@@ -452,6 +456,7 @@ async def run_react(input_message: str, max_iterations: int = 10, retrieved_answ
     # Load conversation history if session_id is provided
     if session_id:
         messages = load_history_conversation(input_message, session_id)
+        logger.info(f"Message {messages} loaded")
         logger.info(f"Loaded {len(messages) - 1} historical messages for session {session_id}")
     else:
         messages = [HumanMessage(content=input_message)]
