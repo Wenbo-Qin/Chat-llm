@@ -36,7 +36,7 @@ async def rag_retrieve_node(state: State) -> State:
     """Retrieve relevant documents using FAISS vector search."""
     query = state["input"]
     k = state.get("retrieved_answers", 5)
-
+    logging.debug(f"number of retrieved answers: {k}")
     # Retrieve documents with similarity scores
     retrieved_docs = search_documents_v2(query, k)
     logging.debug(f"retrieved_docs: {retrieved_docs}")
@@ -61,21 +61,22 @@ async def rag_generate_node(state: State) -> State:
     context = state.get("conversation_history", "")
 
     # Build a professional prompt for summarization
-    prompt = f"""你是一个专业的信息总结助手。请基于以下检索到的文档内容，对用户的问题进行专业、准确的总结。
+    prompt = f"""You are a professional information summarization assistant. Please provide a professional and accurate summary of the user's question based on the following retrieved document content.
 
-用户问题：{query}
+    User question: {query}
 
-检索到的相关文档：
-{context}
+    Retrieved relevant documents:
+    {context}
 
-要求：
-1. 直接回答用户的问题，不要使用对话式的开头（如"你提到的问题很有意思"等）
-2. 基于检索到的文档内容进行总结，不要添加文档中没有的信息
-3. 使用专业、客观的语言
-4. 如果文档中有不同的观点，请客观呈现
-5. 总结要条理清晰，重点突出
+    Requirements:
+    1. Answer the user's question directly; do not use conversational openings (such as "The question you raised is very interesting," etc.)
+    2. Base the summary strictly on the retrieved document content; do not add information not present in the documents
+    3. Use professional and objective language
+    4. If there are differing viewpoints in the documents, present them objectively
+    5. The summary should be well-structured and highlight key points
 
-请开始总结："""
+    Please begin summarizing:"""
+
 
     agent = get_agent()
     response = await agent.ainvoke([HumanMessage(content=prompt)])
