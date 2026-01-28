@@ -11,6 +11,10 @@ from datetime import datetime
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
 
+import fitz  # PyMuPDF
+import zipfile
+import io
+
 # Add project root to Python path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -168,13 +172,6 @@ def process_documents_pdf(directory: str) -> list:
     Returns:
         List of chunked document objects with metadata
     """
-    try:
-        import fitz  # PyMuPDF
-        import zipfile
-        import io
-    except ImportError:
-        print("Error: Required libraries not found. Install with: pip install pymupdf")
-        return []
 
     # Get MinerU API token
     token = os.getenv("MinerU_API_KEY")
