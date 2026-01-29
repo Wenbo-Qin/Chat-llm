@@ -97,8 +97,8 @@ def split_into_chunks(text: str, max_chars: int = 500, overlap_ratio: float = 0.
 def split_into_chunks_v2(text: str) -> list:
     text_splitter = RecursiveCharacterTextSplitter(
         separators = ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""],
-        chunk_size=256,
-        chunk_overlap=20,
+        chunk_size=1024,
+        chunk_overlap=200,
         length_function=len,
         is_separator_regex=False,
     )
