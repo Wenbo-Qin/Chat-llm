@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import fitz  # PyMuPDF
 import zipfile
 import io
+from docx import Document
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent
@@ -24,6 +25,84 @@ from embedding_service.embedding_processor import embedding
 
 # Load environment variables
 load_dotenv(project_root / ".env")
+
+
+def read_docx_from_zip(zip_file, filename: str) -> str:
+    """
+    从 ZIP 文件中读取 .docx 文件内容，包括文本和表格。
+
+    Args:
+        zip_file: ZipFile 对象
+        filename: .docx 文件名
+
+    Returns:
+        提取的文本内容（表格转为 Markdown 格式）
+    """
+    # 读取 docx 文件
+    doc_bytes = zip_file.read(filename)
+    doc = Document(io.BytesIO(doc_bytes))
+
+    content_parts = []
+
+    # 遍历所有段落和表格，按顺序提取
+    for element in doc.element.body:
+        # 判断是段落还是表格
+        if element.tag.endswith('p'):  # paragraph
+            for para in doc.paragraphs:
+                if para._element == element:
+                    if para.text.strip():
+                        content_parts.append(para.text.strip())
+                    break
+        elif element.tag.endswith('tbl'):  # table
+            for table in doc.tables:
+                if table._element == element:
+                    # 将表格转换为 Markdown 格式
+                    md_table = convert_table_to_markdown(table)
+                    if md_table:
+                        content_parts.append(md_table)
+                    break
+
+    return '\n\n'.join(content_parts)
+
+
+def convert_table_to_markdown(table) -> str:
+    """
+    将 python-docx 的表格对象转换为 Markdown 格式。
+
+    Args:
+        table: python-docx Table 对象
+
+    Returns:
+        Markdown 格式的表格字符串
+    """
+    if not table.rows:
+        return ''
+
+    # 提取所有单元格文本
+    rows_data = []
+    for row in table.rows:
+        row_text = [cell.text.strip() for cell in row.cells]
+        rows_data.append(row_text)
+
+    if not rows_data:
+        return ''
+
+    # 构建 Markdown 表格
+    md_lines = []
+
+    # 第一行作为表头
+    header = rows_data[0]
+    md_lines.append('| ' + ' | '.join(header) + ' |')
+
+    # 分隔线
+    separator = '| ' + ' | '.join(['---'] * len(header)) + ' |'
+    md_lines.append(separator)
+
+    # 数据行
+    for row in rows_data[1:]:
+        md_lines.append('| ' + ' | '.join(row) + ' |')
+
+    return '\n'.join(md_lines)
 
 
 def split_into_chunks(text: str, max_chars: int = 500, overlap_ratio: float = 0.3) -> list:
@@ -322,13 +401,32 @@ def process_documents_pdf(directory: str) -> list:
                                         zip_response = requests.get(zip_url, timeout=120)
 
                                         if zip_response.status_code == 200:
-                                            # Extract markdown from zip
+                                            # Extract content from docx file in zip
                                             with zipfile.ZipFile(io.BytesIO(zip_response.content)) as zf:
-                                                for name in zf.namelist():
-                                                    if name.endswith('.md'):
-                                                        content = zf.read(name).decode('utf-8')
+                                                file_list = zf.namelist()
+                                                # print(f"    Files in zip: {file_list}")
+
+                                                # 优先查找 .docx 文件
+                                                docx_files = [f for f in file_list if f.endswith('.docx')]
+
+                                                if docx_files:
+                                                    # 只读取第一个 .docx 文件
+                                                    docx_name = docx_files[0]
+                                                    print(f"    Extracting docx: {docx_name}")
+                                                    content = read_docx_from_zip(zf, docx_name)
+                                                    all_content += content + "\n\n"
+                                                    print(f"    Extracted: {docx_name} ({len(content)} chars)")
+                                                else:
+                                                    # 回退到 .md 文件
+                                                    md_files = [f for f in file_list if f.endswith('.md')]
+                                                    if md_files:
+                                                        md_name = md_files[0]
+                                                        print(f"    No docx found, using md: {md_name}")
+                                                        content = zf.read(md_name).decode('utf-8')
                                                         all_content += content + "\n\n"
-                                                        print(f"    Extracted: {name}")
+                                                        print(f"    Extracted: {md_name} ({len(content)} chars)")
+                                                    else:
+                                                        print("    Warning: No .docx or .md files found in zip!")
                                         break
                                 elif state == "failed":
                                     print(f"  Split {split_idx + 1} failed: {extract_result.get('err_msg')}")
