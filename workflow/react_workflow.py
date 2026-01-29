@@ -63,6 +63,7 @@ class ReActState(TypedDict):
     next: NotRequired[str]
     iteration_count: NotRequired[int]
     max_iterations: NotRequired[int]
+    expand_query_num: NotRequired[int]
     retrieved_docs: NotRequired[List[dict]]
     retrieved_answers: NotRequired[int]
 
@@ -96,12 +97,13 @@ def get_react_agent():
     return _react_agent
 
 
-def create_react_system_prompt(retrieved_answers: int = 5) -> str:
+def create_react_system_prompt(expand_query_num: int = 3, retrieved_answers: int = 5) -> str:
     """
     Create the system prompt for the ReAct agent.
 
     Args:
         retrieved_answers: Number of documents to retrieve when using RAG
+        expanded_query: Number of query that expand based on question
 
     Returns:
         System prompt that instructs the LLM to follow ReAct pattern
@@ -142,7 +144,7 @@ def create_react_system_prompt(retrieved_answers: int = 5) -> str:
     ## Important:
 
     - You MUST call exactly ONE tool at a time
-    - If you call llm_rag, you MUST use retrieved_answers={retrieved_answers}
+    - If you call llm_rag, you MUST use expand_query_num={expand_query_num}, retrieved_answers={retrieved_answers}
     - After each tool execution, evaluate if you need more actions
     - When you're ready to answer, provide the final response naturally WITHOUT calling another tool
 
@@ -167,6 +169,7 @@ async def react_agent_node(state: ReActState) -> ReActState:
     messages = state["messages"]
     iteration_count = state.get("iteration_count", 0)
     max_iterations = state.get("max_iterations", 10)
+    expand_query_num = state.get("expand_query_num", 3)
     retrieved_answers = state.get("retrieved_answers", 5)
 
     # Check iteration limit to prevent infinite loops
@@ -194,7 +197,7 @@ async def react_agent_node(state: ReActState) -> ReActState:
         # Check if system prompt already exists
         has_system = any(isinstance(msg, SystemMessage) for msg in messages)
         if not has_system:
-            system_msg = SystemMessage(content=create_react_system_prompt(retrieved_answers=retrieved_answers))
+            system_msg = SystemMessage(content=create_react_system_prompt(expand_query_num=expand_query_num, retrieved_answers=retrieved_answers))
             messages_with_system = [system_msg] + messages
         else:
             messages_with_system = messages
@@ -435,13 +438,14 @@ react_graph = create_react_graph(max_iterations=10)
 
 
 # Helper function to run ReAct workflow
-async def run_react(input_message: str, max_iterations: int = 10, retrieved_answers: int = 5, session_id: str = None) -> dict:
+async def run_react(input_message: str, max_iterations: int = 10, expand_query_num: int = 3, retrieved_answers: int = 5, session_id: str = None) -> dict:
     """
     Run the ReAct workflow with a user input.
 
     Args:
         input_message: User's query or request
         max_iterations: Maximum number of ReAct iterations
+        expanded_query: Number of query that expand based on question
         retrieved_answers: Number of documents to retrieve when using RAG
         session_id: Optional session ID for loading conversation history
 
@@ -465,6 +469,7 @@ async def run_react(input_message: str, max_iterations: int = 10, retrieved_answ
         "messages": messages,
         "input": input_message,
         "max_iterations": max_iterations,
+        "expand_query_num": expand_query_num,
         "iteration_count": 0,
         "retrieved_answers": retrieved_answers
     }
