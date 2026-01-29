@@ -417,27 +417,37 @@ def search_documents_v2(
     
 # Example usage
 if __name__ == "__main__":
-    # Process documents and save to FAISS
-    success = process_and_save_to_faiss(
-        document_path="./docs/pdf_docs",  # Path to your documents
-        index_path="./vector_stores/faiss_index.bin",
-        metadata_path="./vector_stores/faiss_metadata.pkl",
-        type="pdf"
-    )
+    # # Process documents and save to FAISS
+    # success = process_and_save_to_faiss(
+    #     document_path="./docs/pdf_docs",  # Path to your documents
+    #     index_path="./vector_stores/faiss_index.bin",
+    #     metadata_path="./vector_stores/faiss_metadata.pkl",
+    #     type="pdf"
+    # )
     
-    if success:
-        print("Documents processed and saved to FAISS successfully!")
+    # if success:
+    #     print("Documents processed and saved to FAISS successfully!")
         
-        # Example of searching
-        results = search_documents(
-            query="乌合之众具体指的是什么，如何产生的？",
-            index_path="./vector_stores/faiss_index.bin",
-            metadata_path="./vector_stores/faiss_metadata.pkl",
-            k=5
-        )
+    #     # Example of searching
+    #     results = search_documents(
+    #         query="乌合之众具体指的是什么，如何产生的？",
+    #         index_path="./vector_stores/faiss_index.bin",
+    #         metadata_path="./vector_stores/faiss_metadata.pkl",
+    #         k=5
+    #     )
         
-        print(f"Found {len(results)} results:")
-        for i, result in enumerate(results):
-            print(f"Result {i+1}: Score={result['similarity_score']:.4f}, Content='{result['document']['content'][:10]}...'")
-    else:
-        print("Failed to process documents.")
+    #     print(f"Found {len(results)} results:")
+    #     for i, result in enumerate(results):
+    #         print(f"Result {i+1}: Score={result['similarity_score']:.4f}, Content='{result['document']['content'][:10]}...'")
+    # else:
+    #     print("Failed to process documents.")
+    
+    # Query the vector store
+    results = search_documents_v2(
+        query="佳能6D2相机优势",
+        k=30
+    )
+    for result in results:
+      print(result.get('raw_doc'))    # print(result for result in results[0]['raw_doc'][:200])
+      print(result.get('similarity'))
+      print("-----")
