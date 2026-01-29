@@ -136,6 +136,9 @@ Additionally, we use langchain to memorize the chat history.
 - MinerU技术（[详情点击此处](https://mineru.net/apiManage/docs)）
 - pdf文件较大，因此不上传了
 
+### 22. 为RAG任务制作扩展查询功能
+- 通过agent，将用户的query扩展成多个query
+
 ### 其他后续
 - 重排序机制设计
 - 融入Springboot服务
