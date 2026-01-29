@@ -248,12 +248,20 @@ def process_and_save_to_faiss(document_path: str,
         print("Step 2: Generating embeddings...")
         embeddings = []
         for i, chunk in enumerate(chunks):
-            print(f"Processing chunk {i+1}/{len(chunks)}")
+            if i % 100 == 0:  # Print progress every 100 chunks
+                print(f"Processing chunk {i+1}/{len(chunks)}")
             text_content = chunk['content'].page_content if hasattr(chunk['content'], 'page_content') else chunk['content']
             emb = embedding(text_content)  # Use your embedding function
+            if emb is None:
+                print(f"Warning: Failed to generate embedding for chunk {i+1}, skipping this chunk")
+                continue
             embeddings.append(emb)
         
         # Step 3: Create vector store and add embeddings
+        if not embeddings:
+            print("No valid embeddings generated. Please check your API key and network connection.")
+            return False
+
         print("Step 3: Creating FAISS vector store...\n")
         vector_store = FAISSVectorStore(dimension=len(embeddings[0]) if embeddings else 1536)
         vector_store.add_embeddings(embeddings, chunks)
