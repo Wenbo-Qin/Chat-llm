@@ -18,6 +18,10 @@ from langgraph.graph import StateGraph, START, END
 
 from db_service.faiss_store import search_documents_v2
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 class State(TypedDict):
     conversation_history: list
     input: str
@@ -123,6 +127,8 @@ async def rag_generate_node(state: State) -> State:
     query = state["input"]
     retrieved_docs = state["retrieved_docs"]
     expanded_queries = state.get("expanded_queries")
+    logger.info(f"Number of generated expanded queries: {len(expanded_queries)}")
+    logger.info(f"Generating expanded queries: {expanded_queries}")
     # Build a professional prompt for summarization
     prompt = f"""You are a professional information summarization assistant. Please provide a professional and accurate summary of the user's question and expanded queried based on the following retrieved document content.
 
