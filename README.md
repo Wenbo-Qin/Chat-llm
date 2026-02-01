@@ -139,6 +139,14 @@ Additionally, we use langchain to memorize the chat history.
 ### 22. 为RAG任务制作扩展查询功能
 - 通过agent，将用户的query扩展成多个query
 
+### 23. 新增思考-行动-观察细节，更加用户友好
+- 详见 react_workflow.py
+
+### 24. 表格获取问题 （以EOS6DⅡ说明书.pdf为例）
+- RAG在获取表格内容时，会保留原始表格内容，如</tr> (pdf转markdown的结果)、|| (pdf转docx的结果)
+   - document_processor_test.py 分析表格特征，做了一些探索
+- 表格跨页问题
+
 ### 其他后续
 - 重排序机制设计
 - 融入Springboot服务
