@@ -156,7 +156,7 @@ async def react_agent_node(state: ReActState) -> ReActState:
     ReAct agent node that performs reasoning and decides actions.
 
     This node:
-    1. Analyzes the conversation history
+    1. Analyzes the conversation history and user input
     2. Decides whether to call a tool or provide a final answer
     3. Returns the AI's response (which may include tool_calls)
 
@@ -174,7 +174,7 @@ async def react_agent_node(state: ReActState) -> ReActState:
 
     # Check iteration limit to prevent infinite loops
     if iteration_count >= max_iterations:
-        logger.warning(f"Max iterations ({max_iterations}) reached, forcing completion")
+        logger.warning(f"Max iterations ({max_iterations}) reached, forcing completion\n")
 
         # Generate final answer based on all previous tool results
         final_prompt = """Based on all the information gathered from tool calls in this conversation,
@@ -216,18 +216,33 @@ async def react_agent_node(state: ReActState) -> ReActState:
         new_state["messages"] = messages_with_system + [response]
         new_state["iteration_count"] = iteration_count + 1
 
+        # ============ THOUGHT 输出 ============
+        logger.info(f"\n{'='*60}")
+        logger.info(f"🔄 ReAct 迭代 {iteration_count + 1}")
+        logger.info(f"{'='*60}")
+
         # Log the reasoning (if present in response content)
         if hasattr(response, 'content') and response.content:
-            logger.info(f"ReAct iteration {iteration_count + 1}: {response.content[:200]}...")
+            logger.info(f"\n🧠 Agent 思考内容:")
+            logger.info(f"{'─'*60}")
+            logger.info(f"{response.content}")
+            logger.info(f"{'─'*60}")
 
         # Log tool calls if present
         if hasattr(response, 'tool_calls') and response.tool_calls:
-            logger.info(f"Tool calls: {[call['name'] for call in response.tool_calls]}")
+            for call in response.tool_calls:
+                tool_name = call['name']
+                logger.info(f"\n💭 决策理由: 上述思考内容即为决策依据")
+                logger.info(f"➡️  决策结果: 调用工具 [{tool_name}]")
+                logger.info(f"   调用参数: {call['args']}\n")
+        else:
+            logger.info(f"\n💭 决策理由: 上述思考内容即为决策依据")
+            logger.info(f"➡️  决策结果: 直接回答用户，无需调用工具\n")
 
         return new_state
 
     except Exception as e:
-        logger.error(f"Error in react_agent_node: {e}")
+        logger.error(f"Error in react_agent_node: {e}\n")
 
         # Return error state
         error_state = state.copy()
@@ -261,13 +276,18 @@ def should_continue(state: ReActState) -> Literal["tools", "end"]:
 
     # Check if the last message has tool calls
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        logger.info(f"Agent decided to call tools: {[call['name'] for call in last_message.tool_calls]}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"➡️  ACTION: 继续执行工具调用")
+        logger.info(f"   工具列表: {[call['name'] for call in last_message.tool_calls]}")
+        logger.info(f"{'='*60}\n")
         return "tools"
 
     # No tool calls, meaning the agent provided a final answer
     if isinstance(last_message, AIMessage):
         state["output"] = last_message.content
-        logger.info("Agent provided final answer, ending ReAct loop")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"🏁 ACTION: 提供最终答案，结束 ReAct 循环")
+        logger.info(f"{'='*60}\n")
 
     return "end"
 
@@ -301,7 +321,7 @@ async def custom_tool_node(state: ReActState) -> ReActState:
             break
 
     if not tool_calls:
-        logger.warning("No tool calls found in messages")
+        logger.warning("No tool calls found in messages\n")
         return state
 
     # Execute each tool call
@@ -321,7 +341,10 @@ async def custom_tool_node(state: ReActState) -> ReActState:
         tool_args = tool_call.get("args", {})
         tool_id = tool_call.get("id", "")
 
-        logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
+        logger.info(f"\n{'─'*60}")
+        logger.info(f"⚙️  ACTION 执行: {tool_name}")
+        logger.info(f"   调用参数: {tool_args}")
+        logger.info(f"{'─'*60}")
 
         try:
             # Get the tool
@@ -332,6 +355,17 @@ async def custom_tool_node(state: ReActState) -> ReActState:
 
             # Execute the tool using .ainvoke() method for LangChain tools
             result = await tool.ainvoke(tool_args)
+
+            # ============ OBSERVATION 输出 ============
+            logger.info(f"\n👁️  OBSERVATION (工具执行结果):")
+            logger.info(f"{'─'*60}")
+            # 截断过长的结果输出
+            result_str = str(result)
+            if len(result_str) > 500:
+                logger.info(f"{result_str[:500]}... (结果已截断，共 {len(result_str)} 字符)")
+            else:
+                logger.info(f"{result_str}")
+            logger.info(f"{'─'*60}\n")
 
             # Special handling for llm_rag to extract retrieved_docs
             if tool_name == "llm_rag":
@@ -348,10 +382,10 @@ async def custom_tool_node(state: ReActState) -> ReActState:
                         retrieved_docs = parsed_result.get("retrieved_docs", [])
                         # Update retrieved_answers from args
                         retrieved_answers = tool_args.get("retrieved_answers", 5)
-                        logger.info(f"Extracted {len(retrieved_docs)} retrieved documents from RAG")
+                        logger.info(f"Extracted {len(retrieved_docs)} retrieved documents from RAG\n")
 
                 except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning(f"Failed to parse RAG result as JSON: {e}")
+                    logger.warning(f"Failed to parse RAG result as JSON: {e}\n")
                     retrieved_docs = []
 
             # Create ToolMessage with the result
@@ -362,10 +396,10 @@ async def custom_tool_node(state: ReActState) -> ReActState:
             )
             tool_results.append(tool_result)
 
-            logger.info(f"Tool {tool_name} executed successfully")
+            logger.info(f"Tool {tool_name} executed successfully\n")
 
         except Exception as e:
-            logger.error(f"Error executing tool {tool_name}: {e}")
+            logger.error(f"Error executing tool {tool_name}: {e}\n")
 
             # Create error ToolMessage
             tool_result = ToolMessage(
@@ -383,7 +417,7 @@ async def custom_tool_node(state: ReActState) -> ReActState:
     if retrieved_docs:
         new_state["retrieved_docs"] = retrieved_docs
         new_state["retrieved_answers"] = retrieved_answers
-        logger.info(f"Added {len(retrieved_docs)} retrieved documents to state")
+        logger.info(f"Added {len(retrieved_docs)} retrieved documents to state\n")
 
     return new_state
 
@@ -429,7 +463,7 @@ def create_react_graph(max_iterations: int = 10):
     # Compile the graph
     react_graph = workflow.compile()
 
-    logger.info("ReAct workflow graph created successfully")
+    logger.info("ReAct workflow graph created successfully\n")
     return react_graph
 
 
@@ -460,8 +494,8 @@ async def run_react(input_message: str, max_iterations: int = 10, expand_query_n
     # Load conversation history if session_id is provided
     if session_id:
         messages = load_history_conversation(input_message, session_id)
-        logger.info(f"Message {messages} loaded")
-        logger.info(f"Loaded {len(messages) - 1} historical messages for session {session_id}")
+        logger.info(f"Message {messages} loaded\n")
+        logger.info(f"Loaded {len(messages) - 1} historical messages for session {session_id}\n")
     else:
         messages = [HumanMessage(content=input_message)]
 
@@ -487,7 +521,7 @@ async def run_react(input_message: str, max_iterations: int = 10, expand_query_n
         }
 
     except Exception as e:
-        logger.error(f"Error running ReAct workflow: {e}")
+        logger.error(f"Error running ReAct workflow: {e}\n")
 
         return {
             "messages": initial_state["messages"],
