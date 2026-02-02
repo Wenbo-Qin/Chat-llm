@@ -557,7 +557,7 @@ if __name__ == "__main__":
             print(f"Test {i}/4: {query}")
             print(f"{'─'*70}")
 
-            result = await run_react(query, max_iterations=5)
+            result = await run_react(query, max_iterations=10)
 
             # Show iterations
             iterations = result['iteration_count']
