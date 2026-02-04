@@ -123,7 +123,7 @@ def create_react_system_prompt(expand_query_num: int = 3, retrieved_answers: int
 
     - **llm_chat(query: str)**: Use for general conversations, greetings, casual chat
     - **llm_query(query: str)**: Use for math calculations, weather information, or general factual queries
-    - **llm_rag(query: str, retrieved_answers: int)**: If and only if user ask Psychology, camera related question, Use it for document retrieval, research. If you use llm_rag, you are not allowed to use other tools.
+    - **llm_rag(query: str, retrieved_answers: int)**: If and only if user ask Psychology, camera , and financial report related question, Use it for document retrieval, research. If you use llm_rag, you are not allowed to use other tools.
 
     ## Guidelines:
 
@@ -564,6 +564,7 @@ if __name__ == "__main__":
             print(f"✓ Completed in {iterations} iteration{'s' if iterations > 1 else ''}")
 
             # Show final answer
+            
             if result.get('output'):
                 print(f"\nFinal Answer:\n{result['output'][:300]}")
                 if len(result['output']) > 300:
