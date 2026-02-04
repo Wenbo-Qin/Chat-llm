@@ -59,6 +59,7 @@ async def rag_query_expand_node(state: State) -> State:
     2. Each query should explore a DIFFERENT aspect (definition, types, applications, principles, techniques, etc.)
     3. Be concise and focused on the user's question
     4. Output each query on a separate line without numbering
+    5. The number of expanded queries should be {state.get("expand_query_num")}.
 
     Please expand the user's question to include relevant context.
     Please begin expanding the question:"""
