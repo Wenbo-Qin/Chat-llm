@@ -145,8 +145,13 @@ Additionally, we use langchain to memorize the chat history.
 ### 24. 表格获取问题 （以EOS6DⅡ说明书.pdf为例）
 - RAG在获取表格内容时，会保留原始表格内容，如</tr> (pdf转markdown的结果)、|| (pdf转docx的结果)
    - document_processor_test.py 分析表格特征，做了一些探索
+- 表格截断问题
+   - 每一个chunk，先判断是不是表格，如果是，可以考虑和前一个chunk合并
 - 表格跨页问题
 
+### 25. RAG获取文档的质量问题
+- 以 上海芯导...PDF为例，当查询“告诉我上海芯导公司 主营业务分行业、分产品、分地区、分销售模式情况”的时候，返回很多无关答案（大多无关回答都多次包含 上海芯导公司 这几个字），因为频率过高导致相似度过高
+   - 采取 重排序、 chunk优化策略
 ### 其他后续
 - 重排序机制设计
 - 融入Springboot服务
