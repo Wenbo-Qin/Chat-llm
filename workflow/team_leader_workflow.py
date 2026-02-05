@@ -100,7 +100,7 @@ async def llm_rag(
         result = await rag_graph.ainvoke({
             "input": query,
             "retrieved_answers": retrieved_answers,
-            "expand_query": expand_query,
+            "expand_query_num": expand_query,
             "messages": [],
             "conversation_history": [],
             "output": "",
