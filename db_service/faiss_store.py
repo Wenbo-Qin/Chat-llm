@@ -247,15 +247,25 @@ def process_and_save_to_faiss(document_path: str,
         # Step 2: Generate embeddings for each chunk using embedding_processor
         print("Step 2: Generating embeddings...")
         embeddings = []
+        failed_count = 0
         for i, chunk in enumerate(chunks):
-            if i % 100 == 0:  # Print progress every 100 chunks
+            if i % 10 == 0:  # Print progress every 10 chunks
                 print(f"Processing chunk {i+1}/{len(chunks)}")
-            text_content = chunk['content'].page_content if hasattr(chunk['content'], 'page_content') else chunk['content']
-            emb = embedding(text_content)  # Use your embedding function
-            if emb is None:
-                print(f"Warning: Failed to generate embedding for chunk {i+1}, skipping this chunk")
+
+            try:
+                text_content = chunk['content'].page_content if hasattr(chunk['content'], 'page_content') else chunk['content']
+                emb = embedding(text_content)  # Use your embedding function
+                if emb is None:
+                    print(f"Warning: Failed to generate embedding for chunk {i+1}, skipping this chunk")
+                    failed_count += 1
+                    continue
+                embeddings.append(emb)
+            except Exception as e:
+                print(f"Error processing chunk {i+1}: {e}")
+                failed_count += 1
                 continue
-            embeddings.append(emb)
+
+        print(f"Completed: {len(embeddings)} successful, {failed_count} failed")
         
         # Step 3: Create vector store and add embeddings
         if not embeddings:
@@ -417,13 +427,13 @@ def search_documents_v2(
     
 # Example usage
 if __name__ == "__main__":
-    # # Process documents and save to FAISS
-    # success = process_and_save_to_faiss(
-    #     document_path="./docs/pdf_docs",  # Path to your documents
-    #     index_path="./vector_stores/faiss_index.bin",
-    #     metadata_path="./vector_stores/faiss_metadata.pkl",
-    #     type="pdf"
-    # )
+    # Process documents and save to FAISS
+    success = process_and_save_to_faiss(
+        document_path="./docs/pdf_docs/上海芯导电子科技股份有限公司财报_2025.pdf",  # Path to your documents
+        index_path="./vector_stores/faiss_index.bin",
+        metadata_path="./vector_stores/faiss_metadata.pkl",
+        type="pdf"
+    )
     
     # if success:
     #     print("Documents processed and saved to FAISS successfully!")
@@ -442,12 +452,12 @@ if __name__ == "__main__":
     # else:
     #     print("Failed to process documents.")
     
-    # Query the vector store
-    results = search_documents_v2(
-        query="佳能6D2相机优势",
-        k=30
-    )
-    for result in results:
-      print(result.get('raw_doc'))    # print(result for result in results[0]['raw_doc'][:200])
-      print(result.get('similarity'))
-      print("-----")
+    # # Query the vector store
+    # results = search_documents_v2(
+    #     query="佳能6D2相机优势",
+    #     k=30
+    # )
+    # for result in results:
+    #   print(result.get('raw_doc'))    # print(result for result in results[0]['raw_doc'][:200])
+    #   print(result.get('similarity'))
+    #   print("-----")

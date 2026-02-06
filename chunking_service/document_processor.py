@@ -497,6 +497,6 @@ def process_documents_pdf(directory: str) -> list:
 if __name__ == "__main__":
     # processed_docs = process_documents_v2("./docs/real_docs", "txt") # test.txt is a sample file for testing
     # processed_docs = process_documents_v2("./docs/test.txt") # test.txt is a sample file for testing
-    processed_docs = process_documents_pdf("./docs/pdf_docs/EOS6DⅡ说明书.pdf")
+    processed_docs = process_documents_pdf("./docs/pdf_docs/上海芯导电子科技股份有限公司财报_2025.pdf")
     print(f"Total chunks created: {len(processed_docs)}")
     # print(processed_docs)  # Print first chunk for verification
