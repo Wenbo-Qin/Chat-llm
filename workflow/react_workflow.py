@@ -352,7 +352,6 @@ async def custom_tool_node(state: ReActState) -> ReActState:
 
             if not tool:
                 raise ValueError(f"Unknown tool: {tool_name}")
-
             # Execute the tool using .ainvoke() method for LangChain tools
             result = await tool.ainvoke(tool_args)
 
