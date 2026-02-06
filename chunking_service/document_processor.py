@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 from datetime import datetime
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document as LangchainDocument
 from dotenv import load_dotenv
 
 import fitz  # PyMuPDF
@@ -102,7 +103,8 @@ def convert_table_to_markdown(table) -> str:
     for row in rows_data[1:]:
         md_lines.append('| ' + ' | '.join(row) + ' |')
 
-    return '\n'.join(md_lines)
+    md_content = '\n'.join(md_lines)
+    return f"\n<TABLE_START>\n{md_content}\n</TABLE_END>\n"
 
 
 def split_into_chunks(text: str, max_chars: int = 500, overlap_ratio: float = 0.3) -> list:
@@ -174,6 +176,7 @@ def split_into_chunks(text: str, max_chars: int = 500, overlap_ratio: float = 0.
     return final_chunks
 
 def split_into_chunks_v2(text: str) -> list:
+    # Step 1: Normal chunking
     text_splitter = RecursiveCharacterTextSplitter(
         separators = ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""],
         chunk_size=1024,
@@ -181,7 +184,29 @@ def split_into_chunks_v2(text: str) -> list:
         length_function=len,
         is_separator_regex=False,
     )
-    return text_splitter.create_documents([text])
+    chunks = text_splitter.create_documents([text])
+
+    # Step 2: Detect and merge truncated tables
+    final_chunks = []
+    i = 0
+    while i < len(chunks):
+        current = chunks[i]
+        content = current.page_content
+
+        # Keep merging while table is truncated
+        while content.count('<TABLE_START>') > content.count('</TABLE_END>'):
+            # Check if there's a next chunk to merge with
+            if i + 1 >= len(chunks):
+                # No more chunks to merge, add as-is
+                break
+            # Merge with next chunk
+            content = content + '\n\n' + chunks[i + 1].page_content
+            i += 1
+
+        final_chunks.append(LangchainDocument(page_content=content))
+        i += 1
+
+    return final_chunks
 
 def split_into_chunks_pdf(text: str, max_chars: int = 500, overlap_ratio: float = 0.3) -> list:
     return None
@@ -462,6 +487,13 @@ def process_documents_pdf(directory: str) -> list:
                         content = chunk.page_content
                     else:
                         content = str(chunk)
+
+                    # Save chunk to file
+                    chunk_dir = project_root / "docs" / "generated_chunks"
+                    chunk_dir.mkdir(parents=True, exist_ok=True)
+                    chunk_path = chunk_dir / f"chunk{i + 1}.txt"
+                    with open(chunk_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
 
                     processed.append({
                         'doc_id': f"{doc['id']}_chunk_{i}",
