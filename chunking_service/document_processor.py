@@ -176,11 +176,13 @@ def split_into_chunks(text: str, max_chars: int = 500, overlap_ratio: float = 0.
     return final_chunks
 
 def split_into_chunks_v2(text: str) -> list:
+    MAX_CHUNK_SIZE = 8000  # Maximum chunk size to avoid embedding limit (8192)
+
     # Step 1: Normal chunking
     text_splitter = RecursiveCharacterTextSplitter(
         separators = ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""],
-        chunk_size=1024,
-        chunk_overlap=200,
+        chunk_size=512,
+        chunk_overlap=100,
         length_function=len,
         is_separator_regex=False,
     )
@@ -199,11 +201,39 @@ def split_into_chunks_v2(text: str) -> list:
             if i + 1 >= len(chunks):
                 # No more chunks to merge, add as-is
                 break
+            # Check size limit before merging
+            if len(content) + len(chunks[i + 1].page_content) > MAX_CHUNK_SIZE:
+                # Would exceed limit, stop merging
+                break
             # Merge with next chunk
             content = content + '\n\n' + chunks[i + 1].page_content
             i += 1
 
-        final_chunks.append(LangchainDocument(page_content=content))
+        # Check if this chunk is only a table (loses context)
+        content_stripped = content.strip()
+        is_only_table = (content_stripped.startswith('<TABLE_START>') and
+                         content_stripped.endswith('</TABLE_END>'))
+
+        if is_only_table and final_chunks:
+            # Merge with previous chunk to get context before table
+            last = final_chunks.pop()
+            merged_content = last.page_content + '\n\n' + content
+            # Check size limit
+            if len(merged_content) <= MAX_CHUNK_SIZE:
+                final_chunks.append(LangchainDocument(page_content=merged_content))
+            else:
+                # Too large, keep separate
+                final_chunks.append(last)
+                final_chunks.append(LangchainDocument(page_content=content))
+        elif is_only_table and i + 1 < len(chunks):
+            # No previous chunk, merge with next to get context after table
+            if len(content) + len(chunks[i + 1].page_content) <= MAX_CHUNK_SIZE:
+                content = content + '\n\n' + chunks[i + 1].page_content
+                i += 1
+            final_chunks.append(LangchainDocument(page_content=content))
+        else:
+            final_chunks.append(LangchainDocument(page_content=content))
+
         i += 1
 
     return final_chunks
