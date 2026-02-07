@@ -142,11 +142,12 @@ Additionally, we use langchain to memorize the chat history.
 ### 23. 新增思考-行动-观察细节，更加用户友好
 - 详见 react_workflow.py
 
-### 24. 表格获取问题 （以EOS6DⅡ说明书.pdf为例）
+### 24. 表格获取问题 （以上海芯导电子科技股份有限公司财报_2025.pdf为例）
 - RAG在获取表格内容时，会保留原始表格内容，如</tr> (pdf转markdown的结果)、|| (pdf转docx的结果)
    - document_processor_test.py 分析表格特征，做了一些探索
 - 表格截断问题
    - 每一个chunk，先判断是不是表格，如果是，可以考虑和前一个chunk合并
+      - 需要注意合并后的chunk是否会超过embedding的阈值（之前已经因此报过错）
 - 表格跨页问题
 
 ### 25. RAG获取文档的质量问题
