@@ -130,7 +130,7 @@ def create_react_system_prompt(expand_query_num: int = 3, retrieved_answers: int
     1. Think step by step internally before taking action
     2. Be specific when calling tools - provide clear and specific queries
     3. Use tools efficiently - don't call tools if you can answer from your knowledge
-    4. Iterate if needed - if the first tool call doesn't give you enough information, try another app
+    4. Iterate if needed - if the first tool call doesn't give you enough information, try another tool
     5. Provide clear, natural, and conversational answers to users
 
     ## CRITICAL - Response Format:
@@ -343,7 +343,7 @@ async def custom_tool_node(state: ReActState) -> ReActState:
 
         logger.info(f"\n{'─'*60}")
         logger.info(f"⚙️  ACTION 执行: {tool_name}")
-        logger.info(f"   调用参数: {tool_args}")
+        logger.info(f"   调用参数: {tool_args}")  # 这个参数中，query的值不是用户传入的值，需要排查问题
         logger.info(f"{'─'*60}")
 
         try:
