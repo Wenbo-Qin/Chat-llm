@@ -177,7 +177,7 @@ async def react_ask(question: str, max_iterations: int = 10, expand_query_num: i
         session_id: Optional session ID for conversation tracking
 
     Returns:
-        JSON response with:
+        JSON response with:  
             - question: Original question
             - answer: Final answer from the agent
             - iteration_count: Number of iterations performed
