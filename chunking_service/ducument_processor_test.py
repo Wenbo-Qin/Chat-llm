@@ -9,7 +9,6 @@ from pathlib import Path
 import re
 from datetime import datetime
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document as LangchainDocument
 from dotenv import load_dotenv
 
 import fitz  # PyMuPDF
@@ -68,13 +67,12 @@ def read_docx_from_zip(zip_file, filename: str) -> str:
 
 def convert_table_to_markdown(table) -> str:
     """
-    将 python-docx 的表格对象转换为 Markdown 格式。
+    智能转换表格为最适合 RAG 的文本格式。
 
-    Args:
-        table: python-docx Table 对象
-
-    Returns:
-        Markdown 格式的表格字符串
+    检测表格类型并使用相应的转换策略：
+    1. 功能配置表（有重复表头）→ 语义化文本
+    2. 功能支持表（大量 ○ ●）→ 层次化列表
+    3. 简单表格 → Markdown 表格
     """
     if not table.rows:
         return ''
@@ -88,23 +86,206 @@ def convert_table_to_markdown(table) -> str:
     if not rows_data:
         return ''
 
-    # 构建 Markdown 表格
-    md_lines = []
+    # 检测表格类型
+    table_type = detect_table_type(rows_data)
 
-    # 第一行作为表头
-    header = rows_data[0]
-    md_lines.append('| ' + ' | '.join(header) + ' |')
+    # 根据类型选择转换策略
+    if table_type == 'config_matrix':
+        # 配置矩阵表（如：原始图像画质的调整尺寸）
+        return convert_config_table(rows_data)
+    elif table_type == 'function_support':
+        # 功能支持表（如：镜头像差校正）
+        return convert_function_table(rows_data)
+    elif table_type == 'hierarchical':
+        # 层次表（第一列有重复）
+        return convert_hierarchical_table(rows_data)
+    else:
+        # 默认：简单 Markdown 表格
+        return convert_simple_table(rows_data)
 
-    # 分隔线
-    separator = '| ' + ' | '.join(['---'] * len(header)) + ' |'
-    md_lines.append(separator)
 
-    # 数据行
+def detect_table_type(rows_data) -> str:
+    """检测表格类型"""
+    if len(rows_data) <= 2:
+        return 'simple'
+
+    # 检测是否有大量重复的表头（配置矩阵表）
+    if len(rows_data) > 2:
+        header = rows_data[0]
+        # 检查表头是否有重复
+        unique_headers = len(set(header))
+        total_headers = len(header)
+        # 如果表头有超过50%重复，认为是配置矩阵表
+        if unique_headers < total_headers * 0.5 and total_headers > 3:
+            return 'config_matrix'
+
+    # 检测第一列是否有重复（层次表或功能支持表）
+    first_col_values = [row[0] for row in rows_data[1:] if row and row[0]]
+    unique_count = len(set(first_col_values))
+
+    if unique_count < len(first_col_values):
+        # 检测是否是功能支持表（有大量 ○ ●）
+        has_symbols = any('○' in ' '.join(row) or '●' in ' '.join(row) for row in rows_data)
+        if has_symbols:
+            return 'function_support'
+        else:
+            return 'hierarchical'
+
+    return 'simple'
+
+
+def convert_config_table(rows_data) -> str:
+    """
+    转换配置矩阵表为语义化文本。
+
+    例如：
+    | 原始图像画质 | 可用的调整尺寸设置 | 可用的调整尺寸设置 | 可用的调整尺寸设置 |
+    | --- | --- | --- | --- |
+    | 原始图像画质 | M | S1 | S2 |
+    | L | ○ | ○ | ○ |
+    | M |  | ○ | ○ |
+    | S1 |  |  | ○ |
+    """
+    if len(rows_data) < 2:
+        return ''
+
+    lines = []
+
+    # 第一行第一列是表格标题
+    table_title = rows_data[0][0] if rows_data[0] else '配置表'
+    lines.append(f"{table_title}：")
+
+    # 第一行后续列是选项（如 M、S1、S2）
+    options = [col.strip() for col in rows_data[0][1:] if col.strip()]
+
+    # 后续行第一列是项目名称（如 L、M、S1）
     for row in rows_data[1:]:
-        md_lines.append('| ' + ' | '.join(row) + ' |')
+        if not row or not row[0]:
+            continue
 
-    md_content = '\n'.join(md_lines)
-    return f"\n<TABLE_START>\n{md_content}\n</TABLE_END>\n"
+        item_name = row[0]
+        supported_options = []
+
+        # 检查每个选项是否支持
+        for i, option in enumerate(options):
+            col_index = i + 1
+            if col_index < len(row):
+                value = row[col_index].strip()
+                # ○ 或 ● 表示支持
+                if value in ['○', '●', '✓', '✅']:
+                    supported_options.append(option)
+                elif value and value not in [' ', '', '-']:
+                    # 其他值也认为是支持
+                    supported_options.append(f"{option}({value})")
+
+        # 生成描述
+        if supported_options:
+            if len(supported_options) == len(options):
+                # 全部支持
+                lines.append(f"• {item_name}：支持所有选项（{', '.join(options)}）")
+            else:
+                # 部分支持
+                lines.append(f"• {item_name}：{'、'.join(supported_options)}")
+        else:
+            lines.append(f"• {item_name}：不支持其他选项")
+
+    return '\n'.join(lines)
+
+
+def convert_function_table(rows_data) -> str:
+    """
+    转换功能支持表为层次化列表。
+
+    例如：
+    | 镜头像差 | 周边光量 | ● | ● |
+    | 镜头像差 | 色差校正 | ● | ● |
+
+    转为：
+    镜头像差校正功能：
+    • 周边光量校正：支持（● ● ●）
+    • 色差校正：支持（● ● ●）
+    """
+    if len(rows_data) < 2:
+        return ''
+
+    lines = []
+
+    # 获取表格标题（第一行第一列）
+    table_title = rows_data[0][0] if rows_data[0] else '功能表'
+
+    current_category = None
+    for row in rows_data[1:]:
+        if not row:
+            continue
+
+        category = row[0] if row[0] else current_category
+
+        if category and category != current_category:
+            if current_category is not None:
+                lines.append("")
+            lines.append(f"【{category}】")
+            current_category = category
+
+        # 第2列是功能名称
+        if len(row) > 1 and row[1]:
+            func_name = row[1]
+            values = row[2:] if len(row) > 2 else []
+
+            # 检查支持情况
+            supported_count = sum(1 for v in values if v.strip() in ['○', '●'])
+
+            if supported_count > 0:
+                value_str = ' | '.join(v if v.strip() else '○' for v in values)
+                lines.append(f"  • {func_name}：{value_str}")
+
+    return '\n'.join(lines)
+
+
+def convert_hierarchical_table(rows_data) -> str:
+    """转换层次表"""
+    lines = []
+
+    if rows_data[0] and rows_data[0][0]:
+        lines.append(f"【{rows_data[0][0]}】")
+
+    current_category = None
+    for row in rows_data[1:]:
+        if not row:
+            continue
+
+        category = row[0] if row[0] else current_category
+
+        if category and category != current_category:
+            if current_category is not None:
+                lines.append("")
+            lines.append(f"• {category}")
+            current_category = category
+
+        if len(row) > 1 and row[1]:
+            item_name = row[1]
+            values = row[2:] if len(row) > 2 else []
+
+            if values and any(v.strip() for v in values):
+                value_str = ' | '.join(v if v.strip() else '○' for v in values)
+                lines.append(f"  - {item_name}：{value_str}")
+            else:
+                lines.append(f"  - {item_name}")
+
+    return '\n'.join(lines)
+
+
+def convert_simple_table(rows_data) -> str:
+    """转换简单表格为 Markdown"""
+    lines = []
+    header = rows_data[0]
+    lines.append('| ' + ' | '.join(header) + ' |')
+    separator = '| ' + ' | '.join(['---'] * len(header)) + ' |'
+    lines.append(separator)
+
+    for row in rows_data[1:]:
+        lines.append('| ' + ' | '.join(row) + ' |')
+
+    return '\n'.join(lines)
 
 
 def split_into_chunks(text: str, max_chars: int = 500, overlap_ratio: float = 0.3) -> list:
@@ -176,67 +357,14 @@ def split_into_chunks(text: str, max_chars: int = 500, overlap_ratio: float = 0.
     return final_chunks
 
 def split_into_chunks_v2(text: str) -> list:
-    MAX_CHUNK_SIZE = 8000  # Maximum chunk size to avoid embedding limit (8192)
-
-    # Step 1: Normal chunking
     text_splitter = RecursiveCharacterTextSplitter(
         separators = ["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""],
-        chunk_size=512,
-        chunk_overlap=100,
+        chunk_size=1024,
+        chunk_overlap=200,
         length_function=len,
         is_separator_regex=False,
     )
-    chunks = text_splitter.create_documents([text])
-
-    # Step 2: Detect and merge truncated tables
-    final_chunks = []
-    i = 0
-    while i < len(chunks):
-        current = chunks[i]
-        content = current.page_content
-
-        # Keep merging while table is truncated
-        while content.count('<TABLE_START>') > content.count('</TABLE_END>'):
-            # Check if there's a next chunk to merge with
-            if i + 1 >= len(chunks):
-                # No more chunks to merge, add as-is
-                break
-            # Check size limit before merging
-            if len(content) + len(chunks[i + 1].page_content) > MAX_CHUNK_SIZE:
-                # Would exceed limit, stop merging
-                break
-            # Merge with next chunk
-            content = content + '\n\n' + chunks[i + 1].page_content
-            i += 1
-
-        # Check if this chunk is only a table (loses context)
-        content_stripped = content.strip()
-        is_only_table = (content_stripped.startswith('<TABLE_START>') and
-                         content_stripped.endswith('</TABLE_END>'))
-
-        if is_only_table and final_chunks:
-            # Merge with previous chunk to get context before table
-            last = final_chunks.pop()
-            merged_content = last.page_content + '\n\n' + content
-            # Check size limit
-            if len(merged_content) <= MAX_CHUNK_SIZE:
-                final_chunks.append(LangchainDocument(page_content=merged_content))
-            else:
-                # Too large, keep separate
-                final_chunks.append(last)
-                final_chunks.append(LangchainDocument(page_content=content))
-        elif is_only_table and i + 1 < len(chunks):
-            # No previous chunk, merge with next to get context after table
-            if len(content) + len(chunks[i + 1].page_content) <= MAX_CHUNK_SIZE:
-                content = content + '\n\n' + chunks[i + 1].page_content
-                i += 1
-            final_chunks.append(LangchainDocument(page_content=content))
-        else:
-            final_chunks.append(LangchainDocument(page_content=content))
-
-        i += 1
-
-    return final_chunks
+    return text_splitter.create_documents([text])
 
 def split_into_chunks_pdf(text: str, max_chars: int = 500, overlap_ratio: float = 0.3) -> list:
     return None
@@ -506,6 +634,25 @@ def process_documents_pdf(directory: str) -> list:
 
                 print(f"  Split {split_idx + 1} processing completed")
 
+            # Step 3.5: Save extracted content to docs/generated_docs
+            if all_content.strip():
+                # Create generated_docs directory
+                generated_docs_dir = project_root / "docs" / "generated_docs"
+                generated_docs_dir.mkdir(parents=True, exist_ok=True)
+
+                # Generate filename based on original PDF name
+                original_pdf_name = Path(doc['source']).stem  # Get filename without extension
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = f"{original_pdf_name}_{timestamp}.txt"
+                output_path = generated_docs_dir / output_filename
+
+                # Save content
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(all_content)
+
+                print(f"\n  Saved extracted content to: {output_path}")
+                print(f"  Content size: {len(all_content)} characters")
+
             # Step 4: Process content with split_into_chunks_v2
             if all_content.strip():
                 print(f"\n  Chunking content ({len(all_content)} chars)...")
@@ -517,13 +664,6 @@ def process_documents_pdf(directory: str) -> list:
                         content = chunk.page_content
                     else:
                         content = str(chunk)
-
-                    # Save chunk to file
-                    chunk_dir = project_root / "docs" / "generated_chunks"
-                    chunk_dir.mkdir(parents=True, exist_ok=True)
-                    chunk_path = chunk_dir / f"chunk{i + 1}.txt"
-                    with open(chunk_path, 'w', encoding='utf-8') as f:
-                        f.write(content)
 
                     processed.append({
                         'doc_id': f"{doc['id']}_chunk_{i}",

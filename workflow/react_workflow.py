@@ -33,6 +33,9 @@ from dotenv import load_dotenv
 # Import existing tools
 from workflow.team_leader_workflow import llm_chat, llm_query, llm_rag
 
+# Import history loading
+from db_service.history_conversations import load_history_conversation
+
 load_dotenv()
 
 # Configure logging
@@ -60,6 +63,7 @@ class ReActState(TypedDict):
     next: NotRequired[str]
     iteration_count: NotRequired[int]
     max_iterations: NotRequired[int]
+    expand_query_num: NotRequired[int]
     retrieved_docs: NotRequired[List[dict]]
     retrieved_answers: NotRequired[int]
 
@@ -67,6 +71,18 @@ class ReActState(TypedDict):
 # Global LLM instance for the ReAct agent
 _react_agent = None
 
+# # GLM 4.7 model
+# def get_react_agent():
+#     """Get or create global ReAct agent instance."""
+#     global _react_agent
+#     if _react_agent is None:
+#         _react_agent = ChatOpenAI(
+#             openai_api_key=os.getenv("ZHIPUAI_API_KEY"),
+#             openai_api_base="https://open.bigmodel.cn/api/paas/v4/",
+#             model="glm-4.7",
+#             temperature=0  # Lower temperature for more deterministic reasoning
+#         )
+#     return _react_agent
 
 def get_react_agent():
     """Get or create global ReAct agent instance."""
@@ -81,46 +97,58 @@ def get_react_agent():
     return _react_agent
 
 
-def create_react_system_prompt() -> str:
+def create_react_system_prompt(expand_query_num: int = 3, retrieved_answers: int = 5) -> str:
     """
     Create the system prompt for the ReAct agent.
+
+    Args:
+        retrieved_answers: Number of documents to retrieve when using RAG
+        expanded_query: Number of query that expand based on question
 
     Returns:
         System prompt that instructs the LLM to follow ReAct pattern
     """
-    return """You are an intelligent AI agent that follows the ReAct (Reasoning + Acting) pattern.
+    return f"""You are an intelligent AI assistant that helps users with their questions.
 
-## Your Thinking Process:
+    ## Your Internal Thinking Process (do not include in your response):
 
-1. **THOUGHT**: Analyze the user's request and the current situation
-2. **ACTION**: Decide what to do:
-   - If you need more information → call a tool
-   - If you have enough information → provide a final answer
-3. **OBSERVATION**: After a tool is executed, review the result
-4. **ITERATE**: If needed, perform another action; otherwise, answer
+    1. Analyze the user's request and the current situation
+    2. Decide what to do:
+    - If you need more information → call a tool
+    - If you have enough information → provide a final answer
+    3. After a tool is executed, review the result
+    4. If needed, perform another action; otherwise, answer
 
-## Available Tools:
+    ## Available Tools:
 
-- **llm_chat(query: str)**: Use for general conversations, greetings, casual chat
-- **llm_query(query: str)**: Use for calculations, weather information, or general factual queries
-- **llm_rag(query: str, retrieved_answers: int)**: Use for document retrieval, research, or when you need information from your knowledge base
+    - **llm_chat(query: str)**: Use for general conversations, greetings, casual chat
+    - **llm_query(query: str)**: Use for math calculations, weather information, or general factual queries
+    - **llm_rag(query: str, retrieved_answers: int)**: If and only if user ask Psychology, camera , and financial report related question, Use it for document retrieval, research. If you use llm_rag, you are not allowed to use other tools.
 
-## Guidelines:
+    ## Guidelines:
 
-1. **Think step by step**: Before taking any action, explain your reasoning
-2. **Be specific**: When calling tools, provide clear and specific queries
-3. **Use tools efficiently**: Don't call tools if you can answer from your knowledge
-4. **Iterate if needed**: If the first tool call doesn't give you enough information, try another approach
-5. **Provide clear answers**: When you have enough information, give a comprehensive and structured answer
+    1. Think step by step internally before taking action
+    2. Be specific when calling tools - provide clear and specific queries
+    3. Use tools efficiently - don't call tools if you can answer from your knowledge
+    4. Iterate if needed - if the first tool call doesn't give you enough information, try another tool
+    5. Provide clear, natural, and conversational answers to users
 
-## Important:
+    ## CRITICAL - Response Format:
 
-- You MUST call exactly ONE tool at a time
-- If you call llm_rag, the default retrieved_answers is 5
-- After each tool execution, evaluate if you need more actions
-- When you're ready to answer, provide the final response WITHOUT calling another tool
+    - DO NOT include "THOUGHT:", "ANSWER:", "ACTION:", or "OBSERVATION:" labels in your responses
+    - DO NOT show your internal reasoning process to users
+    - When providing your final answer, respond naturally as if you're having a conversation
+    - Your responses should be clean, user-friendly text without structured tags or labels
+    - Users should see only your final answer, not your thinking process
 
-Let's think through this step by step."""
+    ## Important:
+
+    - You MUST call exactly ONE tool at a time
+    - If you call llm_rag, you MUST use expand_query_num={expand_query_num}, retrieved_answers={retrieved_answers}
+    - After each tool execution, evaluate if you need more actions
+    - When you're ready to answer, provide the final response naturally WITHOUT calling another tool
+
+    Remember: Keep your responses conversational and professional. Users should not see any internal reasoning labels."""
 
 
 async def react_agent_node(state: ReActState) -> ReActState:
@@ -128,7 +156,7 @@ async def react_agent_node(state: ReActState) -> ReActState:
     ReAct agent node that performs reasoning and decides actions.
 
     This node:
-    1. Analyzes the conversation history
+    1. Analyzes the conversation history and user input
     2. Decides whether to call a tool or provide a final answer
     3. Returns the AI's response (which may include tool_calls)
 
@@ -141,15 +169,17 @@ async def react_agent_node(state: ReActState) -> ReActState:
     messages = state["messages"]
     iteration_count = state.get("iteration_count", 0)
     max_iterations = state.get("max_iterations", 10)
+    expand_query_num = state.get("expand_query_num", 3)
+    retrieved_answers = state.get("retrieved_answers", 5)
 
     # Check iteration limit to prevent infinite loops
     if iteration_count >= max_iterations:
-        logger.warning(f"Max iterations ({max_iterations}) reached, forcing completion")
+        logger.warning(f"Max iterations ({max_iterations}) reached, forcing completion\n")
 
         # Generate final answer based on all previous tool results
         final_prompt = """Based on all the information gathered from tool calls in this conversation,
-please provide a comprehensive final answer to the user's original question.
-Summarize all findings and give a clear, structured response."""
+        please provide a comprehensive final answer to the user's original question.
+        Summarize all findings and give a clear, structured response."""
 
         final_messages = messages + [HumanMessage(content=final_prompt)]
         response = await get_react_agent().ainvoke(final_messages)
@@ -167,7 +197,7 @@ Summarize all findings and give a clear, structured response."""
         # Check if system prompt already exists
         has_system = any(isinstance(msg, SystemMessage) for msg in messages)
         if not has_system:
-            system_msg = SystemMessage(content=create_react_system_prompt())
+            system_msg = SystemMessage(content=create_react_system_prompt(expand_query_num=expand_query_num, retrieved_answers=retrieved_answers))
             messages_with_system = [system_msg] + messages
         else:
             messages_with_system = messages
@@ -175,7 +205,7 @@ Summarize all findings and give a clear, structured response."""
         # On subsequent iterations, use messages as-is (they already have the full history)
         messages_with_system = messages
 
-    # Call the LLM to get reasoning and action decision
+    # Call the LLM to get reasoning and action decisionroach
     try:
         # Bind tools to the agent so it can call them
         agent_with_tools = get_react_agent().bind_tools([llm_chat, llm_query, llm_rag])
@@ -183,21 +213,36 @@ Summarize all findings and give a clear, structured response."""
         response = await agent_with_tools.ainvoke(messages_with_system)
 
         new_state = state.copy()
-        new_state["messages"] = messages + [response]
+        new_state["messages"] = messages_with_system + [response]
         new_state["iteration_count"] = iteration_count + 1
+
+        # ============ THOUGHT 输出 ============
+        logger.info(f"\n{'='*60}")
+        logger.info(f"🔄 ReAct 迭代 {iteration_count + 1}")
+        logger.info(f"{'='*60}")
 
         # Log the reasoning (if present in response content)
         if hasattr(response, 'content') and response.content:
-            logger.info(f"ReAct iteration {iteration_count + 1}: {response.content[:200]}...")
+            logger.info(f"\n🧠 Agent 思考内容:")
+            logger.info(f"{'─'*60}")
+            logger.info(f"{response.content}")
+            logger.info(f"{'─'*60}")
 
         # Log tool calls if present
         if hasattr(response, 'tool_calls') and response.tool_calls:
-            logger.info(f"Tool calls: {[call['name'] for call in response.tool_calls]}")
+            for call in response.tool_calls:
+                tool_name = call['name']
+                logger.info(f"\n💭 决策理由: 上述思考内容即为决策依据")
+                logger.info(f"➡️  决策结果: 调用工具 [{tool_name}]")
+                logger.info(f"   调用参数: {call['args']}\n")
+        else:
+            logger.info(f"\n💭 决策理由: 上述思考内容即为决策依据")
+            logger.info(f"➡️  决策结果: 直接回答用户，无需调用工具\n")
 
         return new_state
 
     except Exception as e:
-        logger.error(f"Error in react_agent_node: {e}")
+        logger.error(f"Error in react_agent_node: {e}\n")
 
         # Return error state
         error_state = state.copy()
@@ -231,13 +276,18 @@ def should_continue(state: ReActState) -> Literal["tools", "end"]:
 
     # Check if the last message has tool calls
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        logger.info(f"Agent decided to call tools: {[call['name'] for call in last_message.tool_calls]}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"➡️  ACTION: 继续执行工具调用")
+        logger.info(f"   工具列表: {[call['name'] for call in last_message.tool_calls]}")
+        logger.info(f"{'='*60}\n")
         return "tools"
 
     # No tool calls, meaning the agent provided a final answer
     if isinstance(last_message, AIMessage):
         state["output"] = last_message.content
-        logger.info("Agent provided final answer, ending ReAct loop")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"🏁 ACTION: 提供最终答案，结束 ReAct 循环")
+        logger.info(f"{'='*60}\n")
 
     return "end"
 
@@ -271,7 +321,7 @@ async def custom_tool_node(state: ReActState) -> ReActState:
             break
 
     if not tool_calls:
-        logger.warning("No tool calls found in messages")
+        logger.warning("No tool calls found in messages\n")
         return state
 
     # Execute each tool call
@@ -291,7 +341,10 @@ async def custom_tool_node(state: ReActState) -> ReActState:
         tool_args = tool_call.get("args", {})
         tool_id = tool_call.get("id", "")
 
-        logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
+        logger.info(f"\n{'─'*60}")
+        logger.info(f"⚙️  ACTION 执行: {tool_name}")
+        logger.info(f"   调用参数: {tool_args}")  # 这个参数中，query的值不是用户传入的值，需要排查问题
+        logger.info(f"{'─'*60}")
 
         try:
             # Get the tool
@@ -299,9 +352,19 @@ async def custom_tool_node(state: ReActState) -> ReActState:
 
             if not tool:
                 raise ValueError(f"Unknown tool: {tool_name}")
-
             # Execute the tool using .ainvoke() method for LangChain tools
             result = await tool.ainvoke(tool_args)
+
+            # ============ OBSERVATION 输出 ============
+            logger.info(f"\n👁️  OBSERVATION (工具执行结果):")
+            logger.info(f"{'─'*60}")
+            # 截断过长的结果输出
+            result_str = str(result)
+            if len(result_str) > 500:
+                logger.info(f"{result_str[:500]}... (结果已截断，共 {len(result_str)} 字符)")
+            else:
+                logger.info(f"{result_str}")
+            logger.info(f"{'─'*60}\n")
 
             # Special handling for llm_rag to extract retrieved_docs
             if tool_name == "llm_rag":
@@ -318,10 +381,10 @@ async def custom_tool_node(state: ReActState) -> ReActState:
                         retrieved_docs = parsed_result.get("retrieved_docs", [])
                         # Update retrieved_answers from args
                         retrieved_answers = tool_args.get("retrieved_answers", 5)
-                        logger.info(f"Extracted {len(retrieved_docs)} retrieved documents from RAG")
+                        logger.info(f"Extracted {len(retrieved_docs)} retrieved documents from RAG\n")
 
                 except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning(f"Failed to parse RAG result as JSON: {e}")
+                    logger.warning(f"Failed to parse RAG result as JSON: {e}\n")
                     retrieved_docs = []
 
             # Create ToolMessage with the result
@@ -332,10 +395,10 @@ async def custom_tool_node(state: ReActState) -> ReActState:
             )
             tool_results.append(tool_result)
 
-            logger.info(f"Tool {tool_name} executed successfully")
+            logger.info(f"Tool {tool_name} executed successfully\n")
 
         except Exception as e:
-            logger.error(f"Error executing tool {tool_name}: {e}")
+            logger.error(f"Error executing tool {tool_name}: {e}\n")
 
             # Create error ToolMessage
             tool_result = ToolMessage(
@@ -353,7 +416,7 @@ async def custom_tool_node(state: ReActState) -> ReActState:
     if retrieved_docs:
         new_state["retrieved_docs"] = retrieved_docs
         new_state["retrieved_answers"] = retrieved_answers
-        logger.info(f"Added {len(retrieved_docs)} retrieved documents to state")
+        logger.info(f"Added {len(retrieved_docs)} retrieved documents to state\n")
 
     return new_state
 
@@ -375,7 +438,7 @@ def create_react_graph(max_iterations: int = 10):
     """
     # Create the workflow graph
     workflow = StateGraph(ReActState)
-
+    logging.debug(workflow.state_schema)
     # Add nodes
     workflow.add_node("agent", react_agent_node)
     workflow.add_node("tools", custom_tool_node)  # Use custom tool node instead of ToolNode
@@ -399,7 +462,7 @@ def create_react_graph(max_iterations: int = 10):
     # Compile the graph
     react_graph = workflow.compile()
 
-    logger.info("ReAct workflow graph created successfully")
+    logger.info("ReAct workflow graph created successfully\n")
     return react_graph
 
 
@@ -408,14 +471,16 @@ react_graph = create_react_graph(max_iterations=10)
 
 
 # Helper function to run ReAct workflow
-async def run_react(input_message: str, max_iterations: int = 10, retrieved_answers: int = 5) -> dict:
+async def run_react(input_message: str, max_iterations: int = 10, expand_query_num: int = 3, retrieved_answers: int = 5, session_id: str = None) -> dict:
     """
     Run the ReAct workflow with a user input.
 
     Args:
         input_message: User's query or request
         max_iterations: Maximum number of ReAct iterations
+        expanded_query: Number of query that expand based on question
         retrieved_answers: Number of documents to retrieve when using RAG
+        session_id: Optional session ID for loading conversation history
 
     Returns:
         Dictionary containing:
@@ -425,10 +490,19 @@ async def run_react(input_message: str, max_iterations: int = 10, retrieved_answ
             - retrieved_docs: Retrieved documents with similarity scores
             - retrieved_answers: Count of retrieved answers
     """
+    # Load conversation history if session_id is provided
+    if session_id:
+        messages = load_history_conversation(input_message, session_id)
+        logger.info(f"Message {messages} loaded\n")
+        logger.info(f"Loaded {len(messages) - 1} historical messages for session {session_id}\n")
+    else:
+        messages = [HumanMessage(content=input_message)]
+
     initial_state: ReActState = {
-        "messages": [HumanMessage(content=input_message)],
+        "messages": messages,
         "input": input_message,
         "max_iterations": max_iterations,
+        "expand_query_num": expand_query_num,
         "iteration_count": 0,
         "retrieved_answers": retrieved_answers
     }
@@ -446,7 +520,7 @@ async def run_react(input_message: str, max_iterations: int = 10, retrieved_answ
         }
 
     except Exception as e:
-        logger.error(f"Error running ReAct workflow: {e}")
+        logger.error(f"Error running ReAct workflow: {e}\n")
 
         return {
             "messages": initial_state["messages"],
@@ -482,13 +556,14 @@ if __name__ == "__main__":
             print(f"Test {i}/4: {query}")
             print(f"{'─'*70}")
 
-            result = await run_react(query, max_iterations=5)
+            result = await run_react(query, max_iterations=10)
 
             # Show iterations
             iterations = result['iteration_count']
             print(f"✓ Completed in {iterations} iteration{'s' if iterations > 1 else ''}")
 
             # Show final answer
+            
             if result.get('output'):
                 print(f"\nFinal Answer:\n{result['output'][:300]}")
                 if len(result['output']) > 300:

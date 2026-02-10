@@ -89,6 +89,7 @@ async def llm_query(query: str) -> str:
 @tool
 async def llm_rag(
     query: str,
+    expand_query: int = 3,
     retrieved_answers: int = 5
 ) -> str:
     """
@@ -99,6 +100,7 @@ async def llm_rag(
         result = await rag_graph.ainvoke({
             "input": query,
             "retrieved_answers": retrieved_answers,
+            "expand_query_num": expand_query,
             "messages": [],
             "conversation_history": [],
             "output": "",

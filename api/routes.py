@@ -159,7 +159,7 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
 
 
 @router.post("/react-ask")
-async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: int = 5, session_id: str = None):
+async def react_ask(question: str, max_iterations: int = 10, expand_query_num: int=3, retrieved_answers: int = 5, session_id: str = None):
     """
     ReAct Agent API endpoint that uses reasoning-acting loop to handle user queries.
 
@@ -172,10 +172,12 @@ async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: 
     Args:
         question: User's query or request
         max_iterations: Maximum number of ReAct iterations (default: 10)
+        expand_query_num: Number of query that expand based on question (default: 3)
+        reretrieved_answers: Number of documents to retrieve when using RAG (default: 5)
         session_id: Optional session ID for conversation tracking
 
     Returns:
-        JSON response with:
+        JSON response with:  
             - question: Original question
             - answer: Final answer from the agent
             - iteration_count: Number of iterations performed
@@ -191,7 +193,7 @@ async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: 
         logging.info(f"ReAct request - Session: {session_id}, Question: {question[:50]}...")
 
         # Run the ReAct workflow
-        result = await run_react(question, max_iterations=max_iterations, retrieved_answers=retrieved_answers)
+        result = await run_react(question, max_iterations=max_iterations, expand_query_num=expand_query_num, retrieved_answers=retrieved_answers, session_id=session_id)
 
         # Check if successful
         if not result.get("success"):
