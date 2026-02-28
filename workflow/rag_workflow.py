@@ -17,6 +17,8 @@ from langchain.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, START, END
 
 from db_service.faiss_store import search_documents_v2
+import dashscope
+from http import HTTPStatus
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,8 +32,11 @@ class State(TypedDict):
     task_completed: bool
     expanded_queries: NotRequired[list]  # List of expanded queries
     expand_query_num: NotRequired[int]  # Number of query that expand based on question
-    retrieved_answers: NotRequired[int]  # count of retrieved answers, defaults to 5
+    retrieve_k: NotRequired[int]  # Initial number of documents to retrieve per query
     retrieved_docs: NotRequired[list]  # raw retrieved documents with similarity scores
+    reranked_docs: NotRequired[list]  # reranked documents after rerank node
+    enable_rerank: NotRequired[bool]  # Whether to enable rerank, defaults to True
+    rerank_top_n: NotRequired[int]  # Number of documents to return after rerank
 
 # Global LLM instance for better performance
 _agent = None
@@ -76,7 +81,7 @@ async def rag_query_expand_node(state: State) -> State:
     return new_state
 async def rag_retrieve_node(state: State) -> State:
     """Retrieve relevant documents using FAISS vector search for multiple queries."""
-    k = state.get("retrieved_answers", 5)
+    k = state.get("retrieve_k", 5)
     logging.debug(f"number of retrieved answers per query: {k}")
 
     # Get original query and expanded queries
@@ -107,19 +112,100 @@ async def rag_retrieve_node(state: State) -> State:
 
     logging.debug(f"Total retrieved: {len(all_retrieved_docs)}, After deduplication: {len(unique_docs)}")
 
-    # Build context from retrieved documents
+    new_state = state.copy()
+    new_state["expanded_queries"] = expanded_queries
+    new_state["retrieved_docs"] = unique_docs
+    logging.debug(f"Retrieved {len(unique_docs)} unique documents")
+    return new_state
+
+
+async def rag_rerank_node(state: State) -> State:
+    """Rerank retrieved documents using qwen3-rerank."""
+    retrieved_docs = state.get("retrieved_docs", [])
+    original_query = state["input"].split("\n")[0]  # Get original query without conversation history
+
+    # Check if rerank is enabled, defaults to True
+    enable_rerank = state.get("enable_rerank", True)
+
+    # Use rerank_top_n if provided, otherwise fall back to retrieve_k
+    top_n = state.get("rerank_top_n") or state.get("retrieve_k", 5)
+
+    if not retrieved_docs:
+        new_state = state.copy()
+        new_state["reranked_docs"] = []
+        new_state["conversation_history"] = ""
+        return new_state
+
+    # Validate and adjust top_n if it exceeds available documents
+    actual_doc_count = len(retrieved_docs)
+    if top_n > actual_doc_count:
+        logging.warning(f"rerank_top_n ({top_n}) exceeds actual retrieved documents ({actual_doc_count}), adjusting to {actual_doc_count}")
+        top_n = actual_doc_count
+
+    # If rerank is disabled, use original docs directly
+    if not enable_rerank:
+        logging.debug(f"Rerank disabled, using original {min(len(retrieved_docs), top_n)} documents")
+        selected_docs = retrieved_docs[:top_n]
+        reranked_docs = [
+            {"raw_doc": doc["raw_doc"], "rerank_score": doc.get("similarity", 0)}
+            for doc in selected_docs
+        ]
+    else:
+        logging.debug(f"Reranking {len(retrieved_docs)} documents to top {top_n}")
+
+        # Prepare documents for rerank API
+        documents = [doc["raw_doc"] for doc in retrieved_docs]
+
+        try:
+            # Call qwen3-rerank API
+            resp = dashscope.TextReRank.call(
+                model="qwen3-rerank",
+                query=original_query,
+                api_key=os.getenv("QWEN_API_KEY"),
+                documents=documents,
+                top_n=top_n,
+                return_documents=True,
+                instruct="Given a web search query, retrieve relevant passages that answer the query."
+            )
+
+            if resp.status_code == HTTPStatus.OK:
+                # Build reranked docs with scores
+                reranked_docs = []
+                for result in resp.output.results:
+                    doc_index = result.index
+                    relevance_score = result.relevance_score
+                    reranked_docs.append({
+                        "raw_doc": documents[doc_index],
+                        "rerank_score": relevance_score,
+                        "doc_id": retrieved_docs[doc_index].get("doc_id", doc_index)
+                    })
+                logging.debug(f"Reranked to {len(reranked_docs)} documents")
+            else:
+                logging.warning(f"Rerank API failed: {resp.message}, using original order")
+                # Fallback to original docs
+                reranked_docs = [
+                    {"raw_doc": doc["raw_doc"], "rerank_score": doc.get("similarity", 0)}
+                    for doc in retrieved_docs[:top_n]
+                ]
+        except Exception as e:
+            logging.error(f"Rerank error: {e}, using original order")
+            # Fallback to original docs
+            reranked_docs = [
+                {"raw_doc": doc["raw_doc"], "rerank_score": doc.get("similarity", 0)}
+                for doc in retrieved_docs[:top_n]
+            ]
+
+    # Build context from reranked documents
     context_parts = []
-    for i, doc in enumerate(unique_docs, 1):
+    for i, doc in enumerate(reranked_docs, 1):
         context_parts.append(f"[文档{i}] {doc['raw_doc']}")
 
     context = "\n\n".join(context_parts)
 
     new_state = state.copy()
-    new_state["expanded_queries"] = expanded_queries
-    new_state["retrieved_docs"] = unique_docs
+    new_state["reranked_docs"] = reranked_docs
     new_state["conversation_history"] = context
     new_state["output"] = context  # Pass context to next node
-    logging.debug(f"Retrieved {len(unique_docs)} unique documents")
     return new_state
 
 
@@ -161,11 +247,13 @@ async def rag_generate_node(state: State) -> State:
 workflow = StateGraph(State)
 workflow.add_node("rag_query_expand_node", rag_query_expand_node)  # Placeholder for query expansion
 workflow.add_node("rag_retrieve_node", rag_retrieve_node)
+workflow.add_node("rag_rerank_node", rag_rerank_node)
 workflow.add_node("rag_generate_node", rag_generate_node)
 
 workflow.add_edge(START, "rag_query_expand_node")
 workflow.add_edge("rag_query_expand_node", "rag_retrieve_node")
-workflow.add_edge("rag_retrieve_node", "rag_generate_node")
+workflow.add_edge("rag_retrieve_node", "rag_rerank_node")
+workflow.add_edge("rag_rerank_node", "rag_generate_node")
 workflow.add_edge("rag_generate_node", END)
 
 rag_graph = workflow.compile()

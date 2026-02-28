@@ -22,7 +22,7 @@ class State(TypedDict):
     messages: list
     output: str
     task_completed: bool
-    retrieved_answers: int
+    retrieve_k: int  # number of documents to retrieve per query
 
 class FAISSVectorStore:
     """

@@ -55,7 +55,10 @@ class ReActState(TypedDict):
         iteration_count: NotRequired - Track iterations to prevent infinite loops
         max_iterations: NotRequired - Maximum number of ReAct iterations allowed
         retrieved_docs: NotRequired - Retrieved documents with similarity scores from RAG
-        retrieved_answers: NotRequired - Count of retrieved answers from RAG
+        expand_query_num: NotRequired - Number of query expansions
+        enable_rerank: NotRequired - Whether to enable rerank
+        rerank_top_n: NotRequired - Number of documents to return after rerank
+        retrieve_k: NotRequired - Initial number of documents to retrieve per query
     """
     messages: List[Any]
     input: str
@@ -65,7 +68,9 @@ class ReActState(TypedDict):
     max_iterations: NotRequired[int]
     expand_query_num: NotRequired[int]
     retrieved_docs: NotRequired[List[dict]]
-    retrieved_answers: NotRequired[int]
+    enable_rerank: NotRequired[bool]
+    rerank_top_n: NotRequired[int]
+    retrieve_k: NotRequired[int]
 
 
 # Global LLM instance for the ReAct agent
@@ -97,13 +102,13 @@ def get_react_agent():
     return _react_agent
 
 
-def create_react_system_prompt(expand_query_num: int = 3, retrieved_answers: int = 5) -> str:
+def create_react_system_prompt(expand_query_num: int = 3, retrieve_k: int = 5) -> str:
     """
     Create the system prompt for the ReAct agent.
 
     Args:
-        retrieved_answers: Number of documents to retrieve when using RAG
-        expanded_query: Number of query that expand based on question
+        expand_query_num: Number of query that expand based on question
+        retrieve_k: Number of documents to retrieve when using RAG
 
     Returns:
         System prompt that instructs the LLM to follow ReAct pattern
@@ -123,7 +128,7 @@ def create_react_system_prompt(expand_query_num: int = 3, retrieved_answers: int
 
     - **llm_chat(query: str)**: Use for general conversations, greetings, casual chat
     - **llm_query(query: str)**: Use for math calculations, weather information, or general factual queries
-    - **llm_rag(query: str, retrieved_answers: int)**: If and only if user ask Psychology, camera , and financial report related question, Use it for document retrieval, research. If you use llm_rag, you are not allowed to use other tools.
+    - **llm_rag(query: str, retrieve_k: int)**: If and only if user ask Psychology, camera , and financial report related question, Use it for document retrieval, research. If you use llm_rag, you are not allowed to use other tools.
 
     ## Guidelines:
 
@@ -144,7 +149,7 @@ def create_react_system_prompt(expand_query_num: int = 3, retrieved_answers: int
     ## Important:
 
     - You MUST call exactly ONE tool at a time
-    - If you call llm_rag, you MUST use expand_query_num={expand_query_num}, retrieved_answers={retrieved_answers}
+    - If you call llm_rag, you MUST use expand_query_num={expand_query_num}, retrieve_k={retrieve_k}
     - After each tool execution, evaluate if you need more actions
     - When you're ready to answer, provide the final response naturally WITHOUT calling another tool
 
@@ -170,7 +175,7 @@ async def react_agent_node(state: ReActState) -> ReActState:
     iteration_count = state.get("iteration_count", 0)
     max_iterations = state.get("max_iterations", 10)
     expand_query_num = state.get("expand_query_num", 3)
-    retrieved_answers = state.get("retrieved_answers", 5)
+    retrieve_k = state.get("retrieve_k", 5)
 
     # Check iteration limit to prevent infinite loops
     if iteration_count >= max_iterations:
@@ -197,7 +202,7 @@ async def react_agent_node(state: ReActState) -> ReActState:
         # Check if system prompt already exists
         has_system = any(isinstance(msg, SystemMessage) for msg in messages)
         if not has_system:
-            system_msg = SystemMessage(content=create_react_system_prompt(expand_query_num=expand_query_num, retrieved_answers=retrieved_answers))
+            system_msg = SystemMessage(content=create_react_system_prompt(expand_query_num=expand_query_num, retrieve_k=retrieve_k))
             messages_with_system = [system_msg] + messages
         else:
             messages_with_system = messages
@@ -334,7 +339,6 @@ async def custom_tool_node(state: ReActState) -> ReActState:
 
     # Track retrieved documents from RAG
     retrieved_docs = []
-    retrieved_answers = state.get("retrieved_answers", 5)
 
     for tool_call in tool_calls:
         tool_name = tool_call.get("name")
@@ -343,7 +347,7 @@ async def custom_tool_node(state: ReActState) -> ReActState:
 
         logger.info(f"\n{'─'*60}")
         logger.info(f"⚙️  ACTION 执行: {tool_name}")
-        logger.info(f"   调用参数: {tool_args}")  # 这个参数中，query的值不是用户传入的值，需要排查问题
+        logger.info(f"   调用参数: {tool_args}")
         logger.info(f"{'─'*60}")
 
         try:
@@ -379,8 +383,6 @@ async def custom_tool_node(state: ReActState) -> ReActState:
                     # Extract retrieved_docs and summary
                     if isinstance(parsed_result, dict):
                         retrieved_docs = parsed_result.get("retrieved_docs", [])
-                        # Update retrieved_answers from args
-                        retrieved_answers = tool_args.get("retrieved_answers", 5)
                         logger.info(f"Extracted {len(retrieved_docs)} retrieved documents from RAG\n")
 
                 except (json.JSONDecodeError, TypeError) as e:
@@ -415,7 +417,6 @@ async def custom_tool_node(state: ReActState) -> ReActState:
     # Add retrieved_docs to state if available
     if retrieved_docs:
         new_state["retrieved_docs"] = retrieved_docs
-        new_state["retrieved_answers"] = retrieved_answers
         logger.info(f"Added {len(retrieved_docs)} retrieved documents to state\n")
 
     return new_state
@@ -471,15 +472,25 @@ react_graph = create_react_graph(max_iterations=10)
 
 
 # Helper function to run ReAct workflow
-async def run_react(input_message: str, max_iterations: int = 10, expand_query_num: int = 3, retrieved_answers: int = 5, session_id: str = None) -> dict:
+async def run_react(
+    input_message: str,
+    max_iterations: int = 10,
+    expand_query_num: int = 3,
+    retrieve_k: int = 5,
+    enable_rerank: bool = True,
+    rerank_top_n: int = None,
+    session_id: str = None
+) -> dict:
     """
     Run the ReAct workflow with a user input.
 
     Args:
         input_message: User's query or request
         max_iterations: Maximum number of ReAct iterations
-        expanded_query: Number of query that expand based on question
-        retrieved_answers: Number of documents to retrieve when using RAG
+        expand_query_num: Number of query that expand based on question
+        retrieve_k: Initial number of documents to retrieve per query
+        enable_rerank: Whether to enable rerank
+        rerank_top_n: Number of documents to return after rerank
         session_id: Optional session ID for loading conversation history
 
     Returns:
@@ -488,7 +499,6 @@ async def run_react(input_message: str, max_iterations: int = 10, expand_query_n
             - output: Final answer
             - iteration_count: Number of iterations performed
             - retrieved_docs: Retrieved documents with similarity scores
-            - retrieved_answers: Count of retrieved answers
     """
     # Load conversation history if session_id is provided
     if session_id:
@@ -504,7 +514,9 @@ async def run_react(input_message: str, max_iterations: int = 10, expand_query_n
         "max_iterations": max_iterations,
         "expand_query_num": expand_query_num,
         "iteration_count": 0,
-        "retrieved_answers": retrieved_answers
+        "enable_rerank": enable_rerank,
+        "rerank_top_n": rerank_top_n,
+        "retrieve_k": retrieve_k
     }
 
     try:
@@ -515,7 +527,6 @@ async def run_react(input_message: str, max_iterations: int = 10, expand_query_n
             "output": result.get("output", ""),
             "iteration_count": result.get("iteration_count", 0),
             "retrieved_docs": result.get("retrieved_docs", []),
-            "retrieved_answers": result.get("retrieved_answers", 5),
             "success": True
         }
 
@@ -527,7 +538,6 @@ async def run_react(input_message: str, max_iterations: int = 10, expand_query_n
             "output": f"An error occurred: {str(e)}",
             "iteration_count": 0,
             "retrieved_docs": [],
-            "retrieved_answers": 5,
             "success": False,
             "error": str(e)
         }
