@@ -11,4 +11,5 @@ uvicorn~=0.37.0
 dashscope~=1.24.8
 python-dotenv>=1.1.0
 fastmcp==2.2.1
+langchain-text-splitters
 mcp

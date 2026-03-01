@@ -27,12 +27,19 @@ Additionally, we use langchain to memorize the chat history.
    ``
    Run main.py directly
    ``
-3. Open website of Chat with the robot
+3. How to use chunking, embedding, vector store
+   Due to long time waiting for chunking, we highly recommend you to chunking before using rag.  
+   - run faiss_store.py  
+      - It will chunking, embedding data and store vectors in faiss  
+   - waiting patiently for chunking  
+
+4. Open website of Chat with the robot
    - local  
-      http://localhost:8000/docs
+      [click here](http://localhost:8000/docs)
    - dev
    - uat
 ---
+
 ## 项目进展
 注：由于本人对开发和大模型并不熟悉，无法做到一下做完，只能先实现「最小模型」，在此基础上进行迭代更新。因此，项目进展并不快。项目进展按日进行记录
 
@@ -118,9 +125,36 @@ Additionally, we use langchain to memorize the chat history.
 - 详见API /react-ask
 - RAG仍采用graph的形式
 
+### 19. ReAct框架加入session_id记忆机制
+- 同时如果输入了session_id，则会调用load_history_conversation加载历史聊天记录
+   - **注意：该历史聊天记录可能是原始文件，后续需要优化**
 
+### 20. 使用RecursiveCharacterTextSplitter而非定长chunking
+- chunking结果更加整洁
+
+### 21. 采用OCR技术对pdf文档进行识别与chunking
+- MinerU技术（[详情点击此处](https://mineru.net/apiManage/docs)）
+- pdf文件较大，因此不上传了
+
+### 22. 为RAG任务制作扩展查询功能
+- 通过agent，将用户的query扩展成多个query
+
+### 23. 新增思考-行动-观察细节，更加用户友好
+- 详见 react_workflow.py
+
+### 24. 表格获取问题 （以上海芯导电子科技股份有限公司财报_2025.pdf为例）
+- RAG在获取表格内容时，会保留原始表格内容，如</tr> (pdf转markdown的结果)、|| (pdf转docx的结果)
+   - document_processor_test.py 分析表格特征，做了一些探索
+- 表格截断问题
+   - 每一个chunk，先判断是不是表格，如果是，可以考虑和前一个chunk合并
+      - 需要注意合并后的chunk是否会超过embedding的阈值（之前已经因此报过错）
+- 表格跨页问题
+
+### 25. RAG获取文档的质量问题
+- 以 上海芯导...PDF为例，当查询“告诉我上海芯导公司 主营业务分行业、分产品、分地区、分销售模式情况”的时候，返回很多无关答案（大多无关回答都多次包含 上海芯导公司 这几个字），因为频率过高导致相似度过高
+   - 采取 重排序、 chunk优化策略
 ### 其他后续
-
+- 重排序机制设计
 - 融入Springboot服务
 - 加入agent以及agent到hierarchy机制
 - 设计更加精细化的后端

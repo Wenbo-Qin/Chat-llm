@@ -18,7 +18,7 @@ class State(TypedDict):
     output: NotRequired[str]  # model output answer (deprecated, extracted from messages)
     conversation_history: NotRequired[list]  # store all conversation history
     messages: list  # LangChain message history for tool calling
-    retrieved_answers: NotRequired[int]  # count of retrieved answers, defaults to 5
+    retrieve_k: NotRequired[int]  # number of documents to retrieve per query, defaults to 5
     retrieved_docs: NotRequired[list]  # raw retrieved documents with similarity scores
 
 # Global agent instance
@@ -89,16 +89,29 @@ async def llm_query(query: str) -> str:
 @tool
 async def llm_rag(
     query: str,
-    retrieved_answers: int = 5
+    expand_query: int = 3,
+    retrieve_k: int = 5,
+    enable_rerank: bool = True,
+    rerank_top_n: int = None
 ) -> str:
     """
     RAG tool: Retrieve documents and generate summary based on them.
     Returns JSON string with summary and retrieved documents.
+
+    Args:
+        query: User's query
+        expand_query: Number of query expansions
+        retrieve_k: Initial number of documents to retrieve per query
+        enable_rerank: Whether to enable rerank
+        rerank_top_n: Number of documents to return after rerank
     """
     try:
         result = await rag_graph.ainvoke({
             "input": query,
-            "retrieved_answers": retrieved_answers,
+            "expand_query_num": expand_query,
+            "retrieve_k": retrieve_k,
+            "enable_rerank": enable_rerank,
+            "rerank_top_n": rerank_top_n,
             "messages": [],
             "conversation_history": [],
             "output": "",
@@ -108,12 +121,15 @@ async def llm_rag(
         # Extract the summary output and retrieved documents
         summary = result.get("output", "No summary generated")
         retrieved_docs = result.get("retrieved_docs", [])
+        reranked_docs = result.get("reranked_docs", [])
 
         # Return as JSON string
+        # Use reranked_docs if available and rerank is enabled, otherwise use retrieved_docs
+        docs_to_return = reranked_docs if reranked_docs else retrieved_docs
         import json
         return json.dumps({
             "summary": summary,
-            "retrieved_docs": retrieved_docs
+            "retrieved_docs": docs_to_return
         }, ensure_ascii=False)
 
     except Exception as e:

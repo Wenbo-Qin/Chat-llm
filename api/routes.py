@@ -74,7 +74,7 @@ async def ask_llm(model_name: str = "deepseek-reasoner", question: str = "你好
 
 
 @router.post("/team-leader-task")  # will rename to chat-task
-async def team_leader_task(question: str, retrieved_answers:int=5):
+async def team_leader_task(question: str, retrieve_k: int = 5):
     """
     API endpoint that invokes the team leader workflow to handle user tasks
     """
@@ -85,7 +85,7 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
             "output": "",
             "conversation_history": [],
             "messages": [],
-            "retrieved_answers": retrieved_answers,
+            "retrieve_k": retrieve_k,
         }
         logging.debug(f"Initial state: {initial_state}")
 
@@ -125,7 +125,13 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
                 messages_summary.append({
                     "content": {
                         "raw_doc": doc.get("raw_doc", ""),
-                        "similarity": doc.get("similarity", 0.0)
+                        "similarity": doc.get("similarity", 0.0),
+                        "doc_id": doc.get("doc_id"),
+                        "source": doc.get("source"),
+                        "original_id": doc.get("original_id"),
+                        "chunk_index": doc.get("chunk_index"),
+                        "chunk_order": doc.get("chunk_order"),
+                        "total_chunks": doc.get("total_chunks"),
                     }
                 })
         else:
@@ -141,7 +147,7 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
             content={
                 "question": question,
                 "answer": final_answer,
-                "retrieved_answers": final_state.get("retrieved_answers"),
+                "retrieved_count": len(retrieved_docs),
                 "messages_summary": messages_summary,
             }
         )
@@ -159,7 +165,15 @@ async def team_leader_task(question: str, retrieved_answers:int=5):
 
 
 @router.post("/react-ask")
-async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: int = 5, session_id: str = None):
+async def react_ask(
+    question: str,
+    max_iterations: int = 10,
+    expand_query_num: int = 3,
+    retrieve_k: int = 5,
+    enable_rerank: bool = True,
+    rerank_top_n: int = None,
+    session_id: str = None
+):
     """
     ReAct Agent API endpoint that uses reasoning-acting loop to handle user queries.
 
@@ -172,12 +186,17 @@ async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: 
     Args:
         question: User's query or request
         max_iterations: Maximum number of ReAct iterations (default: 10)
+        expand_query_num: Number of query that expand based on question (default: 3)
+        retrieve_k: Initial number of documents to retrieve per query (default: 5)
+        enable_rerank: Whether to enable rerank (default: True)
+        rerank_top_n: Number of documents to return after rerank (default: same as retrieve_k)
         session_id: Optional session ID for conversation tracking
 
     Returns:
         JSON response with:
             - question: Original question
             - answer: Final answer from the agent
+            - retrieved_count: Number of documents actually returned
             - iteration_count: Number of iterations performed
             - tool_calls_summary: Summary of tools used
             - messages_count: Total messages in conversation
@@ -190,8 +209,24 @@ async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: 
 
         logging.info(f"ReAct request - Session: {session_id}, Question: {question[:50]}...")
 
+        # Calculate max possible documents (queries * per_query_docs)
+        max_possible_docs = (expand_query_num + 1) * retrieve_k
+
+        # Validate rerank_top_n against max possible documents
+        if rerank_top_n and rerank_top_n > max_possible_docs:
+            logging.warning(f"rerank_top_n ({rerank_top_n}) exceeds max possible documents ({max_possible_docs}), adjusting to {max_possible_docs}")
+            rerank_top_n = max_possible_docs
+
         # Run the ReAct workflow
-        result = await run_react(question, max_iterations=max_iterations, retrieved_answers=retrieved_answers)
+        result = await run_react(
+            question,
+            max_iterations=max_iterations,
+            expand_query_num=expand_query_num,
+            retrieve_k=retrieve_k,
+            enable_rerank=enable_rerank,
+            rerank_top_n=rerank_top_n,
+            session_id=session_id
+        )
 
         # Check if successful
         if not result.get("success"):
@@ -230,7 +265,13 @@ async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: 
                 messages_summary.append({
                     "content": {
                         "raw_doc": doc.get("raw_doc", ""),
-                        "similarity": doc.get("similarity", 0.0)
+                        "similarity": doc.get("similarity", 0.0),
+                        "doc_id": doc.get("doc_id"),
+                        "source": doc.get("source"),
+                        "original_id": doc.get("original_id"),
+                        "chunk_index": doc.get("chunk_index"),
+                        "chunk_order": doc.get("chunk_order"),
+                        "total_chunks": doc.get("total_chunks"),
                     }
                 })
         else:
@@ -242,8 +283,8 @@ async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: 
                     })
                     break
 
-        # Get retrieved_answers count and iteration_count
-        retrieved_count = result.get("retrieved_answers", retrieved_answers)
+        # Calculate retrieved_count from retrieved_docs
+        retrieved_count = len(result.get("retrieved_docs", []))
         iteration_count = result.get("iteration_count", 0)
 
         # Save conversation to database
@@ -257,7 +298,7 @@ async def react_ask(question: str, max_iterations: int = 10, retrieved_answers: 
             content={
                 "question": question,
                 "answer": answer,
-                "retrieved_answers": retrieved_count,
+                "retrieved_count": retrieved_count,
                 "messages_summary": messages_summary,
                 "iteration_count": iteration_count,
                 "session_id": session_id
