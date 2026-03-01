@@ -73,11 +73,8 @@ async def rag_query_expand_node(state: State) -> State:
     response = await agent.ainvoke([HumanMessage(content=prompt)])
     expand_query = response.content
     # print(f"Expanded queries:\n{expand_query}", sep="\n")
-    query = state["input"]
-    context = state.get("conversation_history", "")
     new_state = state.copy()
     new_state["expanded_queries"] = expand_query
-    new_state["input"] = f"{query}\n{context}"
     return new_state
 async def rag_retrieve_node(state: State) -> State:
     """Retrieve relevant documents using FAISS vector search for multiple queries."""
@@ -122,7 +119,7 @@ async def rag_retrieve_node(state: State) -> State:
 async def rag_rerank_node(state: State) -> State:
     """Rerank retrieved documents using qwen3-rerank."""
     retrieved_docs = state.get("retrieved_docs", [])
-    original_query = state["input"].split("\n")[0]  # Get original query without conversation history
+    original_query = state["input"]
 
     # Check if rerank is enabled, defaults to True
     enable_rerank = state.get("enable_rerank", True)
@@ -147,7 +144,17 @@ async def rag_rerank_node(state: State) -> State:
         logging.debug(f"Rerank disabled, using original {min(len(retrieved_docs), top_n)} documents")
         selected_docs = retrieved_docs[:top_n]
         reranked_docs = [
-            {"raw_doc": doc["raw_doc"], "rerank_score": doc.get("similarity", 0)}
+            {
+                "raw_doc": doc["raw_doc"],
+                "similarity": doc.get("similarity", 0),
+                "rerank_score": doc.get("similarity", 0),
+                "doc_id": doc.get("doc_id"),
+                "source": doc.get("source"),
+                "original_id": doc.get("original_id"),
+                "chunk_index": doc.get("chunk_index"),
+                "chunk_order": doc.get("chunk_order"),
+                "total_chunks": doc.get("total_chunks"),
+            }
             for doc in selected_docs
         ]
     else:
@@ -176,22 +183,48 @@ async def rag_rerank_node(state: State) -> State:
                     relevance_score = result.relevance_score
                     reranked_docs.append({
                         "raw_doc": documents[doc_index],
+                        "similarity": relevance_score,
                         "rerank_score": relevance_score,
-                        "doc_id": retrieved_docs[doc_index].get("doc_id", doc_index)
+                        "doc_id": retrieved_docs[doc_index].get("doc_id", doc_index),
+                        "source": retrieved_docs[doc_index].get("source"),
+                        "original_id": retrieved_docs[doc_index].get("original_id"),
+                        "chunk_index": retrieved_docs[doc_index].get("chunk_index"),
+                        "chunk_order": retrieved_docs[doc_index].get("chunk_order"),
+                        "total_chunks": retrieved_docs[doc_index].get("total_chunks"),
                     })
                 logging.debug(f"Reranked to {len(reranked_docs)} documents")
             else:
                 logging.warning(f"Rerank API failed: {resp.message}, using original order")
                 # Fallback to original docs
                 reranked_docs = [
-                    {"raw_doc": doc["raw_doc"], "rerank_score": doc.get("similarity", 0)}
+                    {
+                        "raw_doc": doc["raw_doc"],
+                        "similarity": doc.get("similarity", 0),
+                        "rerank_score": doc.get("similarity", 0),
+                        "doc_id": doc.get("doc_id"),
+                        "source": doc.get("source"),
+                        "original_id": doc.get("original_id"),
+                        "chunk_index": doc.get("chunk_index"),
+                        "chunk_order": doc.get("chunk_order"),
+                        "total_chunks": doc.get("total_chunks"),
+                    }
                     for doc in retrieved_docs[:top_n]
                 ]
         except Exception as e:
             logging.error(f"Rerank error: {e}, using original order")
             # Fallback to original docs
             reranked_docs = [
-                {"raw_doc": doc["raw_doc"], "rerank_score": doc.get("similarity", 0)}
+                {
+                    "raw_doc": doc["raw_doc"],
+                    "similarity": doc.get("similarity", 0),
+                    "rerank_score": doc.get("similarity", 0),
+                    "doc_id": doc.get("doc_id"),
+                    "source": doc.get("source"),
+                    "original_id": doc.get("original_id"),
+                    "chunk_index": doc.get("chunk_index"),
+                    "chunk_order": doc.get("chunk_order"),
+                    "total_chunks": doc.get("total_chunks"),
+                }
                 for doc in retrieved_docs[:top_n]
             ]
 
@@ -212,7 +245,7 @@ async def rag_rerank_node(state: State) -> State:
 async def rag_generate_node(state: State) -> State:
     """Generate professional summary using LLM with retrieved context."""
     query = state["input"]
-    retrieved_docs = state["retrieved_docs"]
+    docs_for_generation = state.get("reranked_docs") or state.get("retrieved_docs", [])
     expanded_queries = state.get("expanded_queries")
     logger.info(f"Number of generated expanded queries: {len(expanded_queries)}")
     logger.info(f"Generating expanded queries: {expanded_queries}")
@@ -222,7 +255,7 @@ async def rag_generate_node(state: State) -> State:
     User question: {query}
     Expanded queries: {expanded_queries}
     Retrieved relevant documents:
-    {retrieved_docs}
+    {docs_for_generation}
 
     Requirements:
     1. Answer the user's question directly; do not use conversational openings (such as "The question you raised is very interesting," etc.)
