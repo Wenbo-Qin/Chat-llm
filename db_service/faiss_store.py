@@ -406,8 +406,9 @@ def search_documents_v2(
         # Format results as structured data
         formatted_results = []
         for result in results:
+            doc_meta = result.get('document', {})
             # Extract content from Document object if needed
-            content = result['document']['content']
+            content = doc_meta.get('content', "")
             if hasattr(content, 'page_content'):
                 content = content.page_content
             elif isinstance(content, dict):
@@ -415,9 +416,16 @@ def search_documents_v2(
             else:
                 content = str(content)
 
+            chunk_index = doc_meta.get('chunk_index')
             formatted_results.append({
                 "raw_doc": content,
-                "similarity": float(result['similarity_score'])
+                "similarity": float(result['similarity_score']),
+                "doc_id": doc_meta.get('doc_id'),
+                "source": doc_meta.get('source'),
+                "original_id": doc_meta.get('original_id'),
+                "chunk_index": chunk_index,
+                "chunk_order": (chunk_index + 1) if isinstance(chunk_index, int) else None,
+                "total_chunks": doc_meta.get('total_chunks')
             })
 
         return formatted_results
