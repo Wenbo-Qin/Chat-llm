@@ -125,7 +125,13 @@ async def team_leader_task(question: str, retrieve_k: int = 5):
                 messages_summary.append({
                     "content": {
                         "raw_doc": doc.get("raw_doc", ""),
-                        "similarity": doc.get("similarity", 0.0)
+                        "similarity": doc.get("similarity", 0.0),
+                        "doc_id": doc.get("doc_id"),
+                        "source": doc.get("source"),
+                        "original_id": doc.get("original_id"),
+                        "chunk_index": doc.get("chunk_index"),
+                        "chunk_order": doc.get("chunk_order"),
+                        "total_chunks": doc.get("total_chunks"),
                     }
                 })
         else:
@@ -259,7 +265,13 @@ async def react_ask(
                 messages_summary.append({
                     "content": {
                         "raw_doc": doc.get("raw_doc", ""),
-                        "similarity": doc.get("similarity", 0.0)
+                        "similarity": doc.get("similarity", 0.0),
+                        "doc_id": doc.get("doc_id"),
+                        "source": doc.get("source"),
+                        "original_id": doc.get("original_id"),
+                        "chunk_index": doc.get("chunk_index"),
+                        "chunk_order": doc.get("chunk_order"),
+                        "total_chunks": doc.get("total_chunks"),
                     }
                 })
         else:
